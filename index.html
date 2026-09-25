@@ -1,0 +1,1205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Constraint Tree Builder</title>
+<style>
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --border: #dde1e6; --text: #1c2126; --muted: #6b7580;
+  --accent: #2563eb; --accent-weak: #e3ecff; --sel: #fff1b8; --danger: #c62828; --edge: #4b5563;
+  --hover: #f0f2f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171b; --panel: #1c2025; --border: #2e343b; --text: #e6e9ec; --muted: #8d96a0;
+    --accent: #6b9bff; --accent-weak: #22324f; --sel: #54481c; --danger: #ef5350; --edge: #aab2bb;
+    --hover: #262b31;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg); color: var(--text); display: flex; flex-direction: column;
+}
+button, input, select, textarea { font: inherit; color: inherit; }
+button {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 10px; cursor: pointer; white-space: nowrap;
+}
+button:hover:not(:disabled) { background: var(--hover); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+button.icon { padding: 2px 6px; border-color: transparent; background: transparent; color: var(--muted); }
+button.icon:hover { color: var(--text); }
+input[type=text], select, textarea {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px;
+}
+input[type=text]:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+label.chk { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); cursor: pointer; }
+
+header {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px; flex-wrap: wrap;
+  border-bottom: 1px solid var(--border); background: var(--panel);
+}
+header h1 { font-size: 15px; margin: 0 10px 0 0; font-weight: 600; }
+header .src { color: var(--muted); margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40ch; }
+
+main { flex: 1; display: grid; grid-template-columns: 280px minmax(0, 1fr) 420px; min-height: 0; }
+.panel { display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
+.panel + .panel { border-left: 1px solid var(--border); }
+.panel h2 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  margin: 0; padding: 10px 12px 6px; font-weight: 600; display: flex; justify-content: space-between;
+}
+.tools { padding: 0 12px 8px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.tools input[type=text] { flex: 1; min-width: 0; }
+
+#taxonList { flex: 1; overflow: auto; border-top: 1px solid var(--border); }
+.taxon {
+  display: flex; align-items: center; gap: 6px; padding: 2px 12px; cursor: pointer; user-select: none;
+  white-space: nowrap;
+}
+.taxon:hover { background: var(--hover); }
+.taxon.sel { background: var(--sel); }
+.taxon .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.taxon .dots { display: flex; gap: 2px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+
+#center { background: var(--bg); }
+#selbar {
+  display: flex; gap: 8px; align-items: center; padding: 8px 12px; flex-wrap: wrap;
+  background: var(--panel); border-bottom: 1px solid var(--border);
+}
+#selbar .count { font-weight: 600; min-width: 90px; }
+#selbar input { width: 160px; }
+#treeWrap { flex: 1; overflow: auto; position: relative; }
+#tree { display: block; }
+#tree text { font-size: 12px; dominant-baseline: middle; }
+#tree .leaf, #tree .inode { cursor: pointer; }
+#tree .leaf:hover text { text-decoration: underline; }
+#tree .inode:hover circle { r: 6; }
+#tree .edge { stroke: var(--edge); stroke-width: 1.3; fill: none; }
+#tree .selbg { fill: var(--sel); }
+#tree .glabel { font-size: 11px; font-weight: 600; dominant-baseline: auto; }
+.empty {
+  position: absolute; inset: 0; display: flex; flex-direction: column; gap: 12px;
+  align-items: center; justify-content: center; color: var(--muted); text-align: center; padding: 24px;
+}
+body.drag #treeWrap { outline: 3px dashed var(--accent); outline-offset: -10px; }
+
+#groupList { flex: 1; overflow: auto; border-top: 1px solid var(--border); min-height: 80px; }
+.grp { display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 12px; cursor: pointer; }
+.grp:hover { background: var(--hover); }
+.grp.active { background: var(--accent-weak); }
+.grp input[type=text] { flex: 1; min-width: 0; padding: 1px 6px; background: transparent; border-color: transparent; }
+.grp input[type=text]:hover { border-color: var(--border); }
+.grp .n { color: var(--muted); font-variant-numeric: tabular-nums; width: 30px; text-align: right; flex: none; }
+.grp input.age { flex: none; width: 58px; text-align: right; border-color: var(--border); background: var(--bg); font-variant-numeric: tabular-nums; }
+.grp.warn input.age { border-color: var(--danger); }
+.grp .dash { color: var(--muted); flex: none; }
+.grp .btns { display: flex; flex: none; width: 52px; justify-content: flex-end; }
+.grp.root { border-bottom: 1px solid var(--border); padding-top: 5px; padding-bottom: 5px; }
+.ghdr { display: flex; gap: 6px; padding: 4px 8px 4px 12px; color: var(--muted); font-size: 11px; }
+.ghdr .sp { flex: 1; }
+.ghdr .c { width: 30px; text-align: right; }
+.ghdr .a { width: 58px; text-align: center; }
+.ghdr .dash { visibility: hidden; }
+.ghdr .b { width: 52px; }
+.swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.swatch.rootsw { background: transparent; border: 1.5px solid var(--edge); border-radius: 50%; }
+#warnings { display: none; margin: 0 12px 8px; padding: 6px 10px; border-radius: 6px; font-size: 12px;
+  background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); max-height: 90px; overflow: auto; }
+#warnings.show { display: block; }
+#warnings div + div { margin-top: 2px; }
+#tree .gage { font-size: 10.5px; dominant-baseline: hanging; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.pad { padding: 10px 12px; }
+
+#exportBox { border-top: 1px solid var(--border); display: flex; flex-direction: column; height: 46%; min-height: 200px; }
+.tabs { display: flex; gap: 2px; padding: 8px 12px 0; }
+.tabs button { border-radius: 6px 6px 0 0; border-bottom: none; }
+.tabs button.on { background: var(--accent-weak); border-color: var(--accent-weak); }
+#exportOpts { padding: 6px 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+#exportOpts input[type=text] { width: 150px; }
+#output {
+  flex: 1; margin: 0 12px; resize: none; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap; word-break: break-all; overflow: auto;
+}
+#output.xml { white-space: pre; word-break: normal; }
+#exportBtns { display: flex; gap: 6px; padding: 8px 12px 12px; }
+
+#toast {
+  position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0;
+  background: var(--text); color: var(--panel); padding: 8px 14px; border-radius: 8px;
+  transition: all .2s; pointer-events: none; max-width: 80vw; z-index: 10;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.err { background: var(--danger); color: #fff; }
+
+dialog { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); width: min(700px, 92vw); }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+dialog textarea { width: 100%; height: 300px; font: 12px ui-monospace, Menlo, monospace; }
+dialog .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; grid-auto-rows: minmax(320px, auto); overflow: auto; }
+  .panel + .panel { border-left: none; border-top: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Constraint Tree Builder</h1>
+  <button id="btnOpen" class="primary">Open file…</button>
+  <button id="btnPaste">Paste…</button>
+  <input type="file" id="fileInput" hidden accept=".fa,.fasta,.fas,.fna,.faa,.nex,.nexus,.nxs,.phy,.phylip,.xml,.nwk,.newick,.tre,.tree,.trees,.txt">
+  <button id="btnUndo" title="Undo (⌘/Ctrl+Z)">Undo</button>
+  <button id="btnRedo" title="Redo (⇧⌘/Ctrl+Shift+Z)">Redo</button>
+  <button id="btnClearGroups">Clear groups</button>
+  <span class="src" id="srcName"></span>
+</header>
+
+<main>
+  <!-- Taxa -->
+  <section class="panel">
+    <h2><span>Taxa</span><span id="taxaCount"></span></h2>
+    <div class="tools">
+      <input type="text" id="filter" placeholder="Filter taxa…" spellcheck="false">
+      <label class="chk" title="Treat filter as a regular expression"><input type="checkbox" id="useRegex">regex</label>
+    </div>
+    <div class="tools">
+      <button id="btnSelShown" title="Add all shown taxa to the selection">Select shown</button>
+      <button id="btnInvert">Invert</button>
+      <label class="chk"><input type="checkbox" id="ungroupedOnly">ungrouped only</label>
+    </div>
+    <div class="tools">
+      <span class="muted">Order</span>
+      <select id="sortBy">
+        <option value="tree">Tree</option>
+        <option value="input">Input</option>
+        <option value="alpha">A–Z</option>
+      </select>
+    </div>
+    <div id="taxonList"></div>
+  </section>
+
+  <!-- Tree -->
+  <section class="panel" id="center">
+    <div id="selbar">
+      <span class="count" id="selCount">0 selected</span>
+      <input type="text" id="groupName" placeholder="Group name (optional)" spellcheck="false">
+      <button id="btnGroup" class="primary" title="Create group from selection (G)">Create group</button>
+      <button id="btnClearSel" title="Clear selection (Esc)">Clear selection</button>
+      <span class="muted" style="margin-left:auto">Click taxa to select · click a node to select its clade · <kbd>G</kbd> group · <kbd>Esc</kbd> clear</span>
+    </div>
+    <div id="treeWrap">
+      <svg id="tree" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="empty" id="empty">
+        <div style="font-size:15px;color:var(--text)">Load an alignment to start</div>
+        <div>FASTA, NEXUS, PHYLIP, BEAST XML, a Newick tree, or a plain list of names.<br>Drop a file anywhere, or use <b>Open file…</b> / <b>Paste…</b></div>
+        <button id="btnExample">Load example</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Groups + export -->
+  <section class="panel">
+    <h2><span>Groups &amp; calibrations</span><span id="groupCount"></span></h2>
+    <div class="ghdr"><span class="sp">Clade</span><span class="c">taxa</span><span class="a">min age</span><span class="dash">–</span><span class="a">max age</span><span class="b"></span></div>
+    <div id="groupList"></div>
+    <div id="warnings"></div>
+    <div id="exportBox">
+      <div class="tabs" id="tabs">
+        <button data-fmt="newick" class="on">Newick</button>
+        <button data-fmt="nexus">NEXUS</button>
+        <button data-fmt="ccpp">CalibratedCPP</button>
+        <button data-fmt="beast">MRCA priors</button>
+      </div>
+      <div id="exportOpts"></div>
+      <textarea id="output" readonly spellcheck="false"></textarea>
+      <div id="exportBtns">
+        <button id="btnCopy" class="primary">Copy</button>
+        <button id="btnDownload">Download</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<dialog id="pasteDlg">
+  <form method="dialog">
+    <div style="margin-bottom:8px">Paste an alignment (FASTA / NEXUS / PHYLIP / BEAST XML), a Newick tree, or one taxon name per line.</div>
+    <textarea id="pasteText" spellcheck="false"></textarea>
+    <div class="row">
+      <button value="cancel">Cancel</button>
+      <button value="ok" class="primary" id="pasteOk">Load</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------- state
+const PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#1fb5c9', '#f032e6',
+                 '#9a6324', '#469990', '#808000', '#6f5bd1', '#e6a800', '#d2691e', '#2e8b57'];
+const STORE_KEY = 'constraint-tree-builder-v1';
+
+// Persisted: taxa names, groups (taxa stored as sorted index arrays, optional lower/upper
+// calibration ages), the root calibration, next id, source name.
+const newRoot = () => ({ name: 'root', lower: null, upper: null });
+let S = { taxa: [], groups: [], root: newRoot(), nextId: 1, source: '' };
+let selected = new Set();
+let activeGroup = null;         // id of group highlighted in the groups list
+let anchor = null;              // taxon index for shift-click ranges
+let undoStack = [], redoStack = [];
+let fmt = 'newick';
+let opts = {
+  ungrouped: true, labels: false, ages: true, treeId: '@tree',
+  ccppForm: 'forest', conf: 0.9, declareTaxa: false, beastVersion: 3,
+};
+let T = null;                   // derived tree for the current render
+let W = [];                     // calibration warnings for the current render
+
+const $ = id => document.getElementById(id);
+const num = v => { const x = parseFloat(v); return Number.isFinite(x) ? x : null; };
+const hasAge = c => c.lower != null || c.upper != null;
+const isCalibrated = c => c.lower != null && c.upper != null;
+const ageText = c => hasAge(c) ? `${c.lower ?? '?'}–${c.upper ?? '?'}` : '';
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ S, opts })); } catch (e) { /* storage unavailable */ }
+}
+function restore() {
+  try {
+    const d = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+    if (d && Array.isArray(d.S?.taxa)) { S = d.S; Object.assign(opts, d.opts || {}); }
+    if (!S.root) S.root = newRoot();
+  } catch (e) { /* ignore */ }
+}
+
+// keepGroupList: edits made from inside the groups list (rename, ages) must not rebuild it,
+// or focus would be lost while tabbing between fields.
+function commit(fn, keepGroupList = false) {
+  undoStack.push(JSON.stringify(S));
+  if (undoStack.length > 200) undoStack.shift();
+  redoStack = [];
+  fn();
+  save();
+  render(keepGroupList);
+}
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(JSON.stringify(S));
+  S = JSON.parse(undoStack.pop());
+  if (!S.root) S.root = newRoot();
+  selected.clear(); activeGroup = null;
+  save(); render();
+}
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(JSON.stringify(S));
+  S = JSON.parse(redoStack.pop());
+  if (!S.root) S.root = newRoot();
+  selected.clear(); activeGroup = null;
+  save(); render();
+}
+
+let toastTimer;
+function toast(msg, err = false) {
+  const t = $('toast');
+  t.textContent = msg; t.className = 'show' + (err ? ' err' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.className = '', err ? 4000 : 2200);
+}
+
+// ---------------------------------------------------------------- parsing
+const tokenRe = /'((?:[^']|'')*)'|"([^"]*)"|([^\s;]+)/g;
+function tokens(s) {
+  const out = []; let m;
+  tokenRe.lastIndex = 0;
+  while ((m = tokenRe.exec(s))) out.push(m[1] !== undefined ? m[1].replace(/''/g, "'") : m[2] !== undefined ? m[2] : m[3]);
+  return out;
+}
+const firstToken = line => { tokenRe.lastIndex = 0; const m = tokenRe.exec(line); return m ? (m[1] !== undefined ? m[1].replace(/''/g, "'") : m[2] ?? m[3]) : null; };
+
+function parseFasta(t) {
+  return t.split(/\r?\n/).filter(l => l.startsWith('>')).map(l => l.slice(1).trim());
+}
+function parseNexus(t) {
+  t = t.replace(/\[[^\]]*\]/g, '');
+  let m = t.match(/\btaxlabels\b([\s\S]*?);/i);
+  if (m) return tokens(m[1]);
+  m = t.match(/\bmatrix\b([\s\S]*?);/i);
+  if (m) return m[1].split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(firstToken);
+  // A NEXUS file with only a trees block
+  m = t.match(/\btree\s+[^=]+=\s*(?:\[[^\]]*\]\s*)?([\s\S]*?;)/i);
+  if (m) return { newick: m[1] };
+  return [];
+}
+function parsePhylip(t) {
+  const lines = t.split(/\r?\n/).filter(l => l.trim());
+  const ntax = parseInt(lines[0].trim().split(/\s+/)[0], 10);
+  return lines.slice(1, 1 + ntax).map(l => l.trim().split(/\s+/)[0]);
+}
+function parseBeastXml(t) {
+  const out = []; let m;
+  const re = /<sequence\b[^>]*?\btaxon\s*=\s*"([^"]+)"/g;
+  while ((m = re.exec(t))) out.push(m[1]);
+  if (!out.length) {
+    const re2 = /<taxon\b[^>]*?\bid\s*=\s*"([^"]+)"/g;
+    while ((m = re2.exec(t))) out.push(m[1]);
+  }
+  return out;
+}
+
+// Returns {name, children[]} tree
+function parseNewick(s) {
+  s = s.trim();
+  let i = 0;
+  const skip = () => {
+    while (i < s.length) {
+      if (/\s/.test(s[i])) i++;
+      else if (s[i] === '[') { const j = s.indexOf(']', i); i = j < 0 ? s.length : j + 1; }
+      else break;
+    }
+  };
+  const label = () => {
+    skip();
+    if (s[i] === "'") {
+      let out = ''; i++;
+      while (i < s.length) {
+        if (s[i] === "'" && s[i + 1] === "'") { out += "'"; i += 2; }
+        else if (s[i] === "'") { i++; break; }
+        else out += s[i++];
+      }
+      return out;
+    }
+    let out = '';
+    while (i < s.length && !/[(),:;\[\s]/.test(s[i])) out += s[i++];
+    return out;
+  };
+  // [&key=value,...] annotations: name, lower/lowerAge, upper/upperAge, virtualRoot
+  const annotate = (n, body) => {
+    for (const kv of body.split(',')) {
+      const eq = kv.indexOf('=');
+      if (eq < 0) continue;
+      const key = kv.slice(0, eq).trim().toLowerCase(), val = kv.slice(eq + 1).trim();
+      if (key === 'name') n.annName = val;
+      else if (key === 'lower' || key === 'lowerage') n.lower = num(val);
+      else if (key === 'upper' || key === 'upperage') n.upper = num(val);
+      else if (key === 'virtualroot') n.virtualRoot = val.toLowerCase() === 'true';
+    }
+  };
+  const node = () => {
+    skip();
+    const n = { name: '', children: [], lower: null, upper: null };
+    if (s[i] === '(') {
+      i++;
+      for (;;) {
+        n.children.push(node());
+        skip();
+        if (s[i] === ',') { i++; continue; }
+        if (s[i] === ')') { i++; break; }
+        throw new Error('Unexpected "' + (s[i] ?? 'end of input') + '" at position ' + i);
+      }
+    }
+    // Label, branch length and annotations, in any order
+    let hasLabel = false;
+    for (;;) {
+      while (i < s.length && /\s/.test(s[i])) i++;
+      if (s[i] === '[') {
+        const j = s.indexOf(']', i);
+        const body = s.slice(i + 1, j < 0 ? s.length : j);
+        i = j < 0 ? s.length : j + 1;
+        if (body.startsWith('&')) annotate(n, body.slice(1));
+      } else if (s[i] === ':') {
+        i++; while (i < s.length && /[\s0-9eE.+\-]/.test(s[i])) i++;
+      } else if (!hasLabel && i < s.length && !/[(),;]/.test(s[i])) {
+        n.name = label(); hasLabel = true;
+      } else break;
+    }
+    if (n.annName) n.name = n.annName;
+    return n;
+  };
+  const root = node();
+  skip();
+  if (s[i] !== ';' && i < s.length) throw new Error('Unexpected "' + s[i] + '" at position ' + i);
+  return root;
+}
+function newickToGroups(root) {
+  const taxa = [], groups = [];
+  const walk = n => {
+    if (!n.children.length) { taxa.push(n.name); return [n.name]; }
+    const leaves = n.children.flatMap(walk);
+    if (n !== root && leaves.length > 1) groups.push({ name: n.name, taxa: leaves, lower: n.lower, upper: n.upper });
+    return leaves;
+  };
+  walk(root);
+  const rootCal = root.virtualRoot ? newRoot()
+    : { name: root.name || 'root', lower: root.lower, upper: root.upper };
+  return { taxa, groups, root: rootCal };
+}
+
+function loadText(text, source) {
+  const t = text.replace(/^﻿/, '').trim();
+  if (!t) return toast('Nothing to load', true);
+  try {
+    let names;
+    if (t.startsWith('>')) names = parseFasta(t);
+    else if (/^#nexus/i.test(t)) names = parseNexus(t);
+    else if (/^\d+\s+\d+/.test(t)) names = parsePhylip(t);
+    else if (t.startsWith('<')) names = parseBeastXml(t);
+    else if (t.startsWith('(')) names = { newick: t };
+    else names = t.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+
+    // A CalibratedCPP XML with a CalibrationForestParser: load the alignment taxa, then its constraint tree
+    let forest = null;
+    if (t.startsWith('<')) {
+      const m = t.match(/<[^>]*calibration\.CalibrationForestParser[^>]*>/);
+      const nm = m && m[0].match(/\bnewick\s*=\s*"([^"]*)"/);
+      if (nm) forest = nm[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+    }
+
+    if (names && names.newick) {
+      const tr = newickToGroups(parseNewick(names.newick));
+      importTree(tr, source);
+    } else {
+      if (names.length || !forest) setTaxa(names, source);
+      if (forest) importTree(newickToGroups(parseNewick(forest)), source, true);
+    }
+  } catch (e) {
+    toast('Could not parse ' + (source || 'input') + ': ' + e.message, true);
+  }
+}
+
+function dedupe(names) {
+  const seen = new Set(), out = [];
+  for (let n of names) {
+    n = (n ?? '').trim();
+    if (n && !seen.has(n)) { seen.add(n); out.push(n); }
+  }
+  return out;
+}
+
+// Replace the taxon set, carrying over existing groups by taxon name.
+function setTaxa(names, source) {
+  names = dedupe(names);
+  if (!names.length) return toast('No taxa found in ' + (source || 'input'), true);
+  const carried = S.groups.map(g => ({ ...g, taxa: g.taxa.map(i => S.taxa[i]) }));
+  commit(() => applyTaxaAndGroups(names, carried, source));
+  const kept = S.groups.length;
+  toast(`Loaded ${names.length} taxa` + (kept ? `, kept ${kept} existing group${kept > 1 ? 's' : ''}` : ''));
+}
+
+// A Newick tree replaces the groups and calibrations; taxa are the union of current taxa and tree leaves.
+function importTree({ taxa: leaves, groups, root }, source, noConfirm = false) {
+  if (S.groups.length && !noConfirm && !confirm('Importing a tree replaces the current groups and calibrations. Continue?')) return;
+  const names = dedupe([...S.taxa, ...leaves]);
+  const gs = groups.map(g => ({ name: g.name, taxa: g.taxa, lower: g.lower, upper: g.upper }));
+  // If the tree covers only some taxa, its root is an ordinary clade rather than the root.
+  const partial = new Set(leaves).size < names.length;
+  if (partial && (hasAge(root) || root.name !== 'root')) gs.push({ name: root.name === 'root' ? '' : root.name, taxa: leaves, lower: root.lower, upper: root.upper });
+  let n = 0;
+  commit(() => {
+    S.groups = [];
+    applyTaxaAndGroups(names, gs, source);
+    S.root = partial ? newRoot() : root;
+    n = S.groups.length;
+  });
+  const nc = S.groups.filter(hasAge).length + (hasAge(S.root) ? 1 : 0);
+  toast(`Imported tree: ${leaves.length} taxa, ${n} group${n === 1 ? '' : 's'}` + (nc ? `, ${nc} calibration${nc === 1 ? '' : 's'}` : ''));
+}
+
+function applyTaxaAndGroups(names, namedGroups, source) {
+  const idx = new Map(names.map((n, i) => [n, i]));
+  const seen = new Set(), out = [];
+  const usedNames = new Set();
+  S.taxa = names;
+  S.source = source || '';
+  S.groups = [];
+  for (const g of namedGroups) {
+    const t = [...new Set(g.taxa.map(n => idx.get(n)).filter(i => i !== undefined))].sort((a, b) => a - b);
+    if (t.length < 2 || t.length === names.length) continue;
+    const key = t.join(',');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    let name = g.name && !usedNames.has(g.name) ? g.name : '';
+    const id = S.nextId++;
+    if (!name) name = uniqueName('clade' + id, usedNames);
+    usedNames.add(name);
+    out.push({ id, name, taxa: t, color: g.color || null, lower: g.lower ?? null, upper: g.upper ?? null });
+  }
+  S.groups = out;
+  S.groups.forEach(g => { if (!g.color) g.color = nextColor(); });
+  selected.clear(); activeGroup = null; anchor = null;
+}
+
+// ---------------------------------------------------------------- group logic
+function uniqueName(base, used = new Set(S.groups.map(g => g.name))) {
+  if (!used.has(base)) return base;
+  for (let k = 2; ; k++) if (!used.has(base + '_' + k)) return base + '_' + k;
+}
+function nextColor() {
+  const counts = new Map(PALETTE.map(c => [c, 0]));
+  S.groups.forEach(g => g.color && counts.set(g.color, (counts.get(g.color) || 0) + 1));
+  let best = PALETTE[0];
+  for (const c of PALETTE) if (counts.get(c) < counts.get(best)) best = c;
+  return best;
+}
+// Groups must form a nested (laminar) family: any two are disjoint or one contains the other.
+function findConflict(taxaIdx, ignoreId) {
+  const s = new Set(taxaIdx);
+  for (const g of S.groups) {
+    if (g.id === ignoreId) continue;
+    let inter = 0;
+    for (const i of g.taxa) if (s.has(i)) inter++;
+    if (inter === g.taxa.length && inter === s.size) return { g, kind: 'duplicate' };
+    if (inter > 0 && inter < g.taxa.length && inter < s.size) return { g, kind: 'overlap', inter };
+  }
+  return null;
+}
+function validateSelection(t, ignoreId) {
+  if (t.length < 2) return 'Select at least 2 taxa';
+  if (t.length === S.taxa.length) return 'A group of all taxa is just the root — select a subset';
+  const c = findConflict(t, ignoreId);
+  if (c?.kind === 'duplicate') return `Group "${c.g.name}" already contains exactly these taxa`;
+  if (c) return `Selection partially overlaps "${c.g.name}" (${c.inter} of its ${c.g.taxa.length} taxa) — groups must be nested or disjoint`;
+  return null;
+}
+function createGroup() {
+  const t = [...selected].sort((a, b) => a - b);
+  const err = validateSelection(t);
+  if (err) return toast(err, true);
+  let name = $('groupName').value.trim();
+  if (name && (S.groups.some(g => g.name === name) || S.root.name === name)) return toast(`A group named "${name}" already exists`, true);
+  let id;
+  commit(() => {
+    id = S.nextId++;
+    S.groups.push({ id, name: name || uniqueName('clade' + id), taxa: t, color: nextColor() });
+    selected.clear();
+  });
+  activeGroup = id;
+  $('groupName').value = '';
+  renderGroups();
+}
+function redefineGroup(id) {
+  const g = S.groups.find(g => g.id === id);
+  const t = [...selected].sort((a, b) => a - b);
+  const err = validateSelection(t, id);
+  if (err) return toast(err, true);
+  commit(() => { g.taxa = t; });
+  toast(`"${g.name}" now has ${t.length} taxa`);
+}
+function deleteGroup(id) {
+  commit(() => { S.groups = S.groups.filter(g => g.id !== id); });
+  if (activeGroup === id) activeGroup = null;
+}
+const clade = id => id === 'root' ? S.root : S.groups.find(g => g.id === +id);
+function renameGroup(id, name, input) {
+  const g = clade(id);
+  name = name.trim();
+  if (!name || name === g.name) { input.value = g.name; return; }
+  if (S.groups.some(o => o.name === name) || S.root.name === name) { input.value = g.name; return toast(`A clade named "${name}" already exists`, true); }
+  commit(() => { g.name = name; }, true);
+}
+function setAge(id, key, value, input) {
+  const g = clade(id);
+  const v = value.trim() === '' ? null : num(value);
+  if (value.trim() !== '' && (v === null || v < 0)) {
+    input.value = g[key] ?? '';
+    return toast('Ages must be non-negative numbers', true);
+  }
+  if (v === g[key]) { input.value = v ?? ''; return; }
+  commit(() => { g[key] = v; }, true);
+  input.value = v ?? '';
+}
+
+// Problems that would make BEAST / CalibratedCPP reject the calibrations. Keyed by clade id.
+function calWarnings() {
+  const out = [];
+  const add = (id, msg) => out.push({ id, msg });
+  const taxonNames = new Set(S.taxa);
+  const check = (c, id, label, ancestorCal) => {
+    if (hasAge(c) && !isCalibrated(c)) add(id, `${label}: needs both a min and a max age`);
+    if (isCalibrated(c) && c.lower > c.upper) add(id, `${label}: min age ${c.lower} is greater than max age ${c.upper}`);
+    if (c.lower != null && ancestorCal && ancestorCal.c.upper != null && c.lower > ancestorCal.c.upper)
+      add(id, `${label}: min age ${c.lower} is older than the max age ${ancestorCal.c.upper} of enclosing clade "${ancestorCal.c.name}"`);
+    if (/[\[\](),:;=&'"]/.test(c.name)) add(id, `${label}: name contains characters that break the constraint-tree format`);
+    if (taxonNames.has(c.name)) add(id, `${label}: name clashes with a taxon id`);
+  };
+  check(S.root, 'root', 'root', null);
+  const walk = (node, anc) => {
+    if (node.leaf !== undefined) return;
+    if (node.group) check(node.group, node.group.id, `"${node.group.name}"`, anc);
+    const next = node.group && hasAge(node.group) ? { c: node.group } : anc;
+    node.children.forEach(c => walk(c, next));
+  };
+  walk(T.root, hasAge(S.root) ? { c: S.root } : null);
+  const bad = S.taxa.filter(t => /[\[\](),:;'"]/.test(t));
+  if (bad.length) add(null, `${bad.length} taxon name${bad.length > 1 ? 's contain' : ' contains'} ()[],:; or quotes — CalibrationForestParser cannot read these (e.g. "${bad[0]}")`);
+  return out;
+}
+
+// ---------------------------------------------------------------- derived tree
+function buildTree() {
+  const n = S.taxa.length;
+  const root = { group: null, children: [], depth: 0 };
+  const owner = new Array(n).fill(root);
+  // Largest first: the parent of each group is the current smallest owner of any of its taxa.
+  const gs = [...S.groups].sort((a, b) => b.taxa.length - a.taxa.length);
+  for (const g of gs) {
+    const node = { group: g, children: [] };
+    owner[g.taxa[0]].children.push(node);
+    for (const i of g.taxa) owner[i] = node;
+  }
+  for (let i = 0; i < n; i++) owner[i].children.push({ leaf: i });
+
+  const order = [];
+  const finish = (node, depth, ancestors) => {
+    node.depth = depth;
+    if (node.leaf !== undefined) { node.min = node.leaf; node.h = 0; node.groups = ancestors; return; }
+    const anc = node.group ? [...ancestors, node.group] : ancestors;
+    node.children.forEach(c => finish(c, depth + 1, anc));
+    node.children.sort((a, b) => a.min - b.min);
+    node.min = node.children.length ? node.children[0].min : 0;
+    node.h = 1 + Math.max(0, ...node.children.map(c => c.h));
+  };
+  finish(root, 0, []);
+  const leafNodes = new Array(n);
+  const collect = node => {
+    if (node.leaf !== undefined) { order.push(node.leaf); leafNodes[node.leaf] = node; node.leaves = [node.leaf]; return; }
+    node.children.forEach(collect);
+    node.leaves = node.children.flatMap(c => c.leaves);
+  };
+  collect(root);
+  return { root, order, leafNodes };
+}
+
+// ---------------------------------------------------------------- rendering
+function render(keepGroupList = false) {
+  T = buildTree();
+  W = calWarnings();
+  $('empty').style.display = S.taxa.length ? 'none' : '';
+  $('srcName').textContent = S.source ? S.source : '';
+  $('taxaCount').textContent = S.taxa.length || '';
+  $('groupCount').textContent = S.groups.length || '';
+  $('btnUndo').disabled = !undoStack.length;
+  $('btnRedo').disabled = !redoStack.length;
+  $('btnClearGroups').disabled = !S.groups.length;
+  renderList();
+  renderTree();
+  if (keepGroupList) markGroupWarnings(); else renderGroups();
+  renderWarnings();
+  renderOutput();
+  renderSelBar();
+}
+
+function renderWarnings() {
+  const el = $('warnings');
+  el.innerHTML = W.map(w => `<div>⚠ ${esc(w.msg)}</div>`).join('');
+  el.classList.toggle('show', W.length > 0);
+}
+function markGroupWarnings() {
+  const bad = new Map();
+  W.forEach(w => w.id != null && bad.set(String(w.id), (bad.has(String(w.id)) ? bad.get(String(w.id)) + '\n' : '') + w.msg));
+  document.querySelectorAll('#groupList .grp').forEach(row => {
+    const m = bad.get(row.dataset.g);
+    row.classList.toggle('warn', !!m);
+    row.title = m || '';
+  });
+}
+
+function visibleTaxa() {
+  const f = $('filter').value;
+  let test = () => true;
+  if (f) {
+    if ($('useRegex').checked) {
+      try { const re = new RegExp(f, 'i'); test = s => re.test(s); $('filter').style.outlineColor = ''; }
+      catch (e) { $('filter').style.outlineColor = 'var(--danger)'; test = () => false; }
+    } else { const lf = f.toLowerCase(); test = s => s.toLowerCase().includes(lf); }
+  }
+  const ungroupedOnly = $('ungroupedOnly').checked;
+  let idx;
+  const sort = $('sortBy').value;
+  if (sort === 'tree') idx = T.order;
+  else if (sort === 'alpha') idx = S.taxa.map((_, i) => i).sort((a, b) => S.taxa[a].localeCompare(S.taxa[b], undefined, { numeric: true }));
+  else idx = S.taxa.map((_, i) => i);
+  return idx.filter(i => test(S.taxa[i]) && (!ungroupedOnly || !T.leafNodes[i].groups.length));
+}
+
+function renderList() {
+  const vis = visibleTaxa();
+  $('taxonList').innerHTML = vis.map(i => {
+    const dots = T.leafNodes[i].groups.map(g => `<span class="dot" style="background:${g.color}" title="${esc(g.name)}"></span>`).join('');
+    return `<div class="taxon${selected.has(i) ? ' sel' : ''}" data-i="${i}"><input type="checkbox" tabindex="-1"${selected.has(i) ? ' checked' : ''}><span class="nm" title="${esc(S.taxa[i])}">${esc(S.taxa[i])}</span><span class="dots">${dots}</span></div>`;
+  }).join('') || (S.taxa.length ? '<div class="pad muted">No taxa match the filter</div>' : '');
+}
+
+function renderTree() {
+  const svg = $('tree');
+  if (!S.taxa.length) { svg.innerHTML = ''; svg.setAttribute('width', 0); svg.setAttribute('height', 0); return; }
+  const { root } = T;
+  const ROW = 20, PADT = 16;
+  const maxName = Math.max(0, ...S.groups.map(g => Math.max(g.name.length, ageText(g).length * 0.95)));
+  const COL = Math.min(120, Math.max(34, maxName * 6.6 + 18));
+  const rootAge = ageText(S.root);
+  const PADL = 22 + (rootAge ? Math.max(rootAge.length * 6.3, S.root.name.length * 6.6) + 8 : 0);
+  const H = root.h;
+  const leafX = PADL + H * COL;
+  const maxTaxon = Math.max(...S.taxa.map(s => s.length));
+  const W = leafX + 16 + maxTaxon * 7.2 + 20;
+  let row = 0;
+  const layout = node => {
+    node.x = PADL + (H - node.h) * COL;
+    if (node.leaf !== undefined) { node.y = PADT + row++ * ROW + ROW / 2; node.yTop = node.yBot = node.y; return; }
+    node.children.forEach(layout);
+    node.yTop = node.children[0].yTop;
+    node.yBot = node.children[node.children.length - 1].yBot;
+    node.y = (node.children[0].y + node.children[node.children.length - 1].y) / 2;
+  };
+  layout(root);
+  const Ht = PADT * 2 + row * ROW;
+
+  const bands = [], edges = [], nodes = [], leaves = [], labels = [];
+  const walk = (node, parent) => {
+    if (parent) edges.push(`M${parent.x},${node.y}H${node.x}`);
+    if (node.leaf !== undefined) {
+      const i = node.leaf, sel = selected.has(i);
+      leaves.push(`<g class="leaf" data-i="${i}">` +
+        (sel ? `<rect class="selbg" x="${node.x + 6}" y="${node.y - ROW / 2 + 1}" width="${S.taxa[i].length * 7.2 + 12}" height="${ROW - 2}" rx="4"/>` : '') +
+        `<circle cx="${node.x}" cy="${node.y}" r="${sel ? 4 : 3}" fill="${sel ? 'var(--accent)' : 'var(--edge)'}"/>` +
+        `<text x="${node.x + 12}" y="${node.y + 1}" fill="currentColor"${sel ? ' font-weight="600"' : ''}>${esc(S.taxa[i])}</text>` +
+        `<rect x="${node.x - 6}" y="${node.y - ROW / 2}" width="${W - node.x}" height="${ROW}" fill="transparent"/></g>`);
+      return;
+    }
+    if (node.children.length > 1) edges.push(`M${node.x},${node.children[0].y}V${node.children[node.children.length - 1].y}`);
+    const g = node.group;
+    if (g) {
+      const inset = node.depth * 3;
+      bands.push(`<rect x="${node.x - 8}" y="${node.yTop - ROW / 2 + 2}" width="${W - node.x + 8 - 6 - inset}" height="${node.yBot - node.yTop + ROW - 4}" rx="6" fill="${g.color}" fill-opacity="${g.id === activeGroup ? .2 : .08}" stroke="${g.color}" stroke-opacity="${g.id === activeGroup ? .9 : .45}"${g.id === activeGroup ? ' stroke-width="2"' : ''}/>`);
+      const maxChars = Math.floor((COL - 16) / 6.6);
+      const nm = g.name.length > maxChars ? g.name.slice(0, Math.max(1, maxChars - 1)) + '…' : g.name;
+      labels.push(`<text class="glabel" x="${node.x - 11}" y="${node.y - 5}" text-anchor="end" fill="${g.color}">${esc(nm)}</text>`);
+      if (hasAge(g)) labels.push(`<text class="gage" x="${node.x - 11}" y="${node.y + 4}" text-anchor="end">${esc(ageText(g))}</text>`);
+    } else if (rootAge) {
+      labels.push(`<text class="glabel" x="${node.x - 11}" y="${node.y - 5}" text-anchor="end" fill="currentColor">${esc(S.root.name)}</text>`);
+      labels.push(`<text class="gage" x="${node.x - 11}" y="${node.y + 4}" text-anchor="end">${esc(rootAge)}</text>`);
+    }
+    node.children.forEach(c => walk(c, node));
+    const all = node.leaves.every(i => selected.has(i));
+    nodes.push(`<g class="inode" data-g="${g ? g.id : 'root'}"><title>${esc(g ? g.name : 'root')} (${node.leaves.length} taxa) — click to select</title>` +
+      `<circle cx="${node.x}" cy="${node.y}" r="10" fill="transparent"/>` +
+      `<circle cx="${node.x}" cy="${node.y}" r="4.5" fill="${all ? 'var(--accent)' : g ? g.color : 'var(--panel)'}" stroke="${g ? g.color : 'var(--edge)'}" stroke-width="1.5"/></g>`);
+  };
+  walk(root, null);
+  // Stem to root
+  edges.push(`M${rootAge ? 4 : PADL - 14},${root.y}H${root.x}`);
+
+  svg.setAttribute('width', W);
+  svg.setAttribute('height', Ht);
+  svg.setAttribute('viewBox', `0 0 ${W} ${Ht}`);
+  svg.style.color = 'var(--text)';
+  svg.innerHTML = bands.join('') + `<path class="edge" d="${edges.join('')}"/>` + labels.join('') + leaves.join('') + nodes.join('');
+}
+
+function renderGroups() {
+  if (!S.taxa.length) { $('groupList').innerHTML = ''; return; }
+  const ageInputs = c =>
+    `<input type="text" class="age" data-k="lower" value="${c.lower ?? ''}" placeholder="min" inputmode="decimal" spellcheck="false">` +
+    `<span class="dash">–</span>` +
+    `<input type="text" class="age" data-k="upper" value="${c.upper ?? ''}" placeholder="max" inputmode="decimal" spellcheck="false">`;
+  const rows = [
+    `<div class="grp root" data-g="root" title="Calibrate the root (all taxa)">` +
+    `<span class="swatch rootsw"></span>` +
+    `<input type="text" class="nm" value="${esc(S.root.name)}" spellcheck="false" title="Rename">` +
+    `<span class="n">${S.taxa.length}</span>${ageInputs(S.root)}<span class="btns"></span></div>`,
+  ];
+  const walk = (node, depth) => {
+    if (node.leaf !== undefined) return;
+    if (node.group) {
+      const g = node.group;
+      rows.push(`<div class="grp${g.id === activeGroup ? ' active' : ''}" data-g="${g.id}" style="padding-left:${12 + (depth - 1) * 14}px">` +
+        `<span class="swatch" style="background:${g.color}"></span>` +
+        `<input type="text" class="nm" value="${esc(g.name)}" spellcheck="false" title="Rename">` +
+        `<span class="n">${g.taxa.length}</span>${ageInputs(g)}<span class="btns">` +
+        `<button class="icon" data-act="redefine" tabindex="-1" title="Replace this group's taxa with the current selection">⟲</button>` +
+        `<button class="icon" data-act="delete" tabindex="-1" title="Delete group">✕</button></span></div>`);
+    }
+    node.children.forEach(c => walk(c, depth + 1));
+  };
+  walk(T.root, 0);
+  if (!S.groups.length) rows.push('<div class="pad muted">No groups yet. Select taxa and press <b>Create group</b>.</div>');
+  $('groupList').innerHTML = rows.join('');
+  markGroupWarnings();
+}
+
+function renderSelBar() {
+  const n = selected.size;
+  $('selCount').textContent = `${n} selected`;
+  $('btnGroup').disabled = n < 2;
+  $('btnClearSel').disabled = !n;
+}
+
+function refreshSelection() {
+  renderList(); renderTree(); renderGroups(); renderSelBar();
+}
+
+// ---------------------------------------------------------------- export
+function qNewick(s) {
+  return /^[^\s()\[\]':;,]+$/.test(s) ? s : "'" + s.replace(/'/g, "''") + "'";
+}
+function qNexus(s) {
+  return /^[A-Za-z0-9_.\-]+$/.test(s) ? s : "'" + s.replace(/'/g, "''") + "'";
+}
+const xmlAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const annotation = c => isCalibrated(c) ? `[&lower=${c.lower},upper=${c.upper}]` : '';
+
+// o.ungrouped: keep taxa outside every group; o.labels: name clades; o.ages: [&lower,upper] annotations;
+// o.forest: CalibrationForestParser dialect (unquoted names, every clade named via [&name=...]).
+function toNewick(o = opts) {
+  const q = o.forest ? (s => s) : qNewick;
+  const tail = c => {
+    if (o.forest) {
+      const kv = [`name=${c.name}`];
+      if (isCalibrated(c)) kv.push(`lower=${c.lower}`, `upper=${c.upper}`);
+      return `[&${kv.join(',')}]`;
+    }
+    return (o.labels ? qNewick(c.name) : '') + (o.ages ? annotation(c) : '');
+  };
+  const nw = node => {
+    if (node.leaf !== undefined) return q(S.taxa[node.leaf]);
+    return '(' + node.children.map(nw).join(',') + ')' + (node.group ? tail(node.group) : '');
+  };
+  const ungrouped = o.forest || o.ungrouped;
+  const kids = ungrouped ? T.root.children : T.root.children.filter(c => c.leaf === undefined);
+  if (!kids.length) return '';
+  // The root is only annotated when it carries a calibration: a named root would otherwise be
+  // read as a whole-tree clade.
+  let rootTail = '';
+  if (o.forest) rootTail = isCalibrated(S.root) ? tail(S.root) : '[&virtualRoot=true]';
+  else if (o.ages && isCalibrated(S.root) && ungrouped) rootTail = (o.labels ? qNewick(S.root.name) : '') + annotation(S.root);
+  if (kids.length === 1 && !ungrouped) return nw(kids[0]) + ';';
+  return '(' + kids.map(nw).join(',') + ')' + rootTail + ';';
+}
+function groupsInTreeOrder() {
+  const out = [];
+  const walk = node => { if (node.group) out.push(node); (node.children || []).forEach(walk); };
+  walk(T.root);
+  return out;
+}
+function toNexus() {
+  const gs = groupsInTreeOrder();
+  const lines = ['#NEXUS', ''];
+  if (gs.length) {
+    lines.push('BEGIN SETS;');
+    for (const node of gs) lines.push(`    TAXSET ${qNexus(node.group.name)} = ${node.leaves.map(i => qNexus(S.taxa[i])).join(' ')};`);
+    lines.push('END;', '');
+  }
+  const nw = toNewick();
+  if (nw) lines.push('BEGIN TREES;', `    TREE constraint = ${nw}`, 'END;');
+  return lines.join('\n');
+}
+
+// Emits <taxon> elements, declaring each taxon on first use when opts.declareTaxa is set.
+function taxonWriter() {
+  const declared = new Set();
+  return (t, indent) => {
+    if (opts.declareTaxa && !declared.has(t)) { declared.add(t); return `${indent}<taxon id="${xmlAttr(t)}" spec="Taxon"/>`; }
+    return `${indent}<taxon idref="${xmlAttr(t)}"/>`;
+  };
+}
+const REAL = 'beast.base.spec.inference.parameter.RealScalarParam';
+
+function toCalibratedCPP() {
+  const gs = groupsInTreeOrder();
+  const nCal = gs.filter(n => isCalibrated(n.group)).length + (isCalibrated(S.root) ? 1 : 0);
+  if (!gs.length && !nCal) return '<!-- No groups or calibrations defined -->';
+  const tree = xmlAttr(opts.treeId);
+  const out = [];
+
+  if (opts.ccppForm === 'forest') {
+    const newick = toNewick({ forest: true });
+    out.push(
+      '<!-- 1. Tree prior (e.g. calibratedcpp.CalibratedBirthDeathSkylineModel): add as a child element',
+      '        in place of any <calibrations> elements -->',
+      `<calibrationForest id="calibrationForest" spec="calibration.CalibrationForestParser"`,
+      `    newick="${xmlAttr(newick)}"/>`,
+      '');
+    if (nCal) out.push(
+      '<!-- 2. Inside <distribution id="prior">: prior on the calibrated clade ages -->',
+      `<distribution id="calibrationPrior" spec="calibrationprior.CalibrationPrior" tree="${tree}" calibrationForest="@calibrationForest"/>`);
+    else out.push('<!-- No clade has both a min and a max age, so there is no CalibrationPrior to add -->');
+    if (opts.conf !== 0.9 && nCal) out.push('', `<!-- The constraint-tree form always uses confidenceLevel 0.9; switch to "Taxon sets" to use ${opts.conf} -->`);
+    return out.join('\n');
+  }
+
+  // Explicit form: TaxonSets on the tree prior, CalibrationCladePriors referring to them.
+  const taxon = taxonWriter();
+  const clades = [];
+  if (isCalibrated(S.root)) clades.push({ c: S.root, leaves: T.root.leaves });
+  gs.forEach(n => clades.push({ c: n.group, leaves: n.leaves }));
+  out.push('<!-- 1. Tree prior (e.g. calibratedcpp.CalibratedBirthDeathSkylineModel): add these child elements -->');
+  for (const { c, leaves } of clades) {
+    out.push(`<calibrations id="${xmlAttr(c.name)}" spec="TaxonSet">`);
+    leaves.forEach(i => out.push(taxon(S.taxa[i], '    ')));
+    out.push('</calibrations>');
+  }
+  if (!nCal) {
+    out.push('', '<!-- No clade has both a min and a max age, so there is no CalibrationPrior to add -->');
+    return out.join('\n');
+  }
+  out.push('', '<!-- 2. Inside <distribution id="prior">: prior on the calibrated clade ages -->',
+    `<distribution id="calibrationPrior" spec="calibrationprior.CalibrationPrior" tree="${tree}">`);
+  let confDeclared = false;
+  for (const { c } of clades) {
+    if (!isCalibrated(c)) continue;
+    const id = xmlAttr(c.name);
+    let confAttr = '', confEl = null;
+    if (opts.conf !== 0.9) {
+      if (confDeclared) confAttr = ' confidenceLevel="@calibrationConfidence"';
+      else { confDeclared = true; confEl = `        <confidenceLevel id="calibrationConfidence" spec="${REAL}" domain="UnitInterval" value="${opts.conf}"/>`; }
+    }
+    out.push(`    <calibration id="${id}.prior" spec="calibrationprior.CalibrationCladePrior" taxa="@${id}"${confAttr}>`,
+      `        <lowerAge id="${id}.lowerAge" spec="${REAL}" domain="NonNegativeReal" value="${c.lower}"/>`,
+      `        <upperAge id="${id}.upperAge" spec="${REAL}" domain="NonNegativeReal" value="${c.upper}"/>`);
+    if (confEl) out.push(confEl);
+    out.push('    </calibration>');
+  }
+  out.push('</distribution>');
+  return out.join('\n');
+}
+
+function toBeastXml() {
+  const gs = groupsInTreeOrder();
+  const clades = gs.map(n => ({ c: n.group, leaves: n.leaves }));
+  if (hasAge(S.root)) clades.unshift({ c: S.root, leaves: T.root.leaves });
+  if (!clades.length) return '<!-- No groups defined -->';
+  const b3 = opts.beastVersion === 3;
+  const mrca = b3 ? 'beast.base.spec.evolution.tree.MRCAPrior' : 'beast.base.evolution.tree.MRCAPrior';
+  const uniform = b3 ? 'beast.base.spec.inference.distribution.Uniform' : 'beast.base.inference.distribution.Uniform';
+  const taxon = taxonWriter();
+  const out = [
+    '<!-- Monophyly constraints: paste inside <distribution id="prior" ...> -->',
+  ];
+  if (clades.some(x => hasAge(x.c))) out.push('<!-- Calibrated clades get hard Uniform bounds on their MRCA age -->');
+  // Inner groups first, so each taxon is declared in the smallest set and referenced elsewhere.
+  for (const { c, leaves } of [...clades].sort((a, b) => a.leaves.length - b.leaves.length)) {
+    const id = xmlAttr(c.name);
+    out.push(`<distribution id="${id}.prior" spec="${mrca}" monophyletic="true" tree="${xmlAttr(opts.treeId)}">`);
+    out.push(`    <taxonset id="${id}" spec="TaxonSet">`);
+    leaves.forEach(i => out.push(taxon(S.taxa[i], '        ')));
+    out.push('    </taxonset>');
+    if (hasAge(c)) {
+      const lo = c.lower != null ? ` lower="${c.lower}"` : '';
+      const hi = c.upper != null ? ` upper="${c.upper}"` : ' upper="Infinity"';
+      out.push(`    <distr id="${id}.Uniform" spec="${uniform}"${lo}${hi}/>`);
+    }
+    out.push('</distribution>');
+  }
+  return out.join('\n');
+}
+
+function renderOutput() {
+  const o = $('exportOpts');
+  const chk = (key, label) => `<label class="chk"><input type="checkbox" data-opt="${key}"${opts[key] ? ' checked' : ''}>${label}</label>`;
+  const treeIdInput = `<label class="muted">tree <input type="text" data-opt="treeId" value="${esc(opts.treeId)}" spellcheck="false" style="width:130px"></label>`;
+  if (fmt === 'ccpp') {
+    o.innerHTML =
+      `<select data-opt="ccppForm"><option value="forest"${opts.ccppForm === 'forest' ? ' selected' : ''}>Constraint tree</option>` +
+      `<option value="sets"${opts.ccppForm === 'sets' ? ' selected' : ''}>Taxon sets + clade priors</option></select>` +
+      treeIdInput +
+      (opts.ccppForm === 'sets'
+        ? `<label class="muted" title="Probability mass inside each soft bound">confidence <input type="text" data-opt="conf" value="${opts.conf}" style="width:48px"></label>` + chk('declareTaxa', 'declare taxa')
+        : '');
+  } else if (fmt === 'beast') {
+    o.innerHTML = `<select data-opt="beastVersion"><option value="3"${opts.beastVersion === 3 ? ' selected' : ''}>BEAST 3</option>` +
+      `<option value="2"${opts.beastVersion === 2 ? ' selected' : ''}>BEAST 2</option></select>` + treeIdInput + chk('declareTaxa', 'declare taxa');
+  } else {
+    o.innerHTML = chk('ungrouped', 'ungrouped taxa') + chk('labels', 'clade names') + chk('ages', 'ages [&lower,upper]');
+  }
+  const out = !S.taxa.length ? '' : fmt === 'newick' ? toNewick() : fmt === 'nexus' ? toNexus() : fmt === 'ccpp' ? toCalibratedCPP() : toBeastXml();
+  $('output').value = out;
+  $('output').classList.toggle('xml', fmt === 'ccpp' || fmt === 'beast');
+  $('btnCopy').disabled = $('btnDownload').disabled = !out;
+}
+$('exportOpts').addEventListener('change', e => {
+  const k = e.target.dataset.opt;
+  if (!k) return;
+  if (e.target.type === 'checkbox') opts[k] = e.target.checked;
+  else if (k === 'beastVersion') opts[k] = +e.target.value;
+  else if (k === 'conf') {
+    const v = num(e.target.value);
+    if (v === null || v <= 0 || v >= 1) { toast('Confidence level must be between 0 and 1', true); e.target.value = opts.conf; return; }
+    opts.conf = v;
+  } else opts[k] = e.target.value;
+  save();
+  renderOutput();
+});
+
+// ---------------------------------------------------------------- events
+function setSelection(indices, additive) {
+  if (!additive) selected.clear();
+  indices.forEach(i => selected.add(i));
+}
+function toggleTaxon(i, e, orderList) {
+  if (e.shiftKey && anchor !== null) {
+    const a = orderList.indexOf(anchor), b = orderList.indexOf(i);
+    if (a >= 0 && b >= 0) {
+      const [lo, hi] = a < b ? [a, b] : [b, a];
+      const on = selected.has(anchor);
+      for (let k = lo; k <= hi; k++) on ? selected.add(orderList[k]) : selected.delete(orderList[k]);
+      refreshSelection();
+      return;
+    }
+  }
+  selected.has(i) ? selected.delete(i) : selected.add(i);
+  anchor = i;
+  refreshSelection();
+}
+
+$('taxonList').addEventListener('click', e => {
+  const row = e.target.closest('.taxon');
+  if (!row) return;
+  e.preventDefault();
+  toggleTaxon(+row.dataset.i, e, visibleTaxa());
+});
+$('taxonList').addEventListener('mousedown', e => { if (e.shiftKey) e.preventDefault(); });
+
+$('tree').addEventListener('mousedown', e => { if (e.shiftKey) e.preventDefault(); });
+$('tree').addEventListener('click', e => {
+  const leaf = e.target.closest('.leaf');
+  if (leaf) return toggleTaxon(+leaf.dataset.i, e, T.order);
+  const inode = e.target.closest('.inode');
+  if (inode) {
+    const id = inode.dataset.g;
+    const node = id === 'root' ? T.root : findNode(+id);
+    const additive = e.shiftKey || e.metaKey || e.ctrlKey;
+    const allSel = node.leaves.every(i => selected.has(i));
+    if (additive && allSel) node.leaves.forEach(i => selected.delete(i));
+    else setSelection(node.leaves, additive);
+    activeGroup = node.group ? node.group.id : null;
+    refreshSelection();
+  }
+});
+function findNode(id) {
+  let found = null;
+  const walk = n => { if (n.group?.id === id) found = n; else (n.children || []).forEach(walk); };
+  walk(T.root);
+  return found;
+}
+
+$('groupList').addEventListener('click', e => {
+  const row = e.target.closest('.grp');
+  if (!row || e.target.tagName === 'INPUT') return;
+  if (row.dataset.g === 'root') {
+    setSelection(T.root.leaves, false);
+    activeGroup = null;
+    return refreshSelection();
+  }
+  const id = +row.dataset.g;
+  const act = e.target.closest('button')?.dataset.act;
+  if (act === 'delete') return deleteGroup(id);
+  if (act === 'redefine') return redefineGroup(id);
+  const node = findNode(id);
+  setSelection(node.leaves, e.shiftKey || e.metaKey || e.ctrlKey);
+  activeGroup = id;
+  refreshSelection();
+  // Scroll the clade into view
+  const wrap = $('treeWrap');
+  const top = node.yTop - 40;
+  if (top < wrap.scrollTop || node.yBot > wrap.scrollTop + wrap.clientHeight) wrap.scrollTo({ top, behavior: 'smooth' });
+});
+$('groupList').addEventListener('change', e => {
+  if (e.target.tagName !== 'INPUT') return;
+  const id = e.target.closest('.grp').dataset.g;
+  if (e.target.classList.contains('age')) setAge(id, e.target.dataset.k, e.target.value, e.target);
+  else renameGroup(id, e.target.value, e.target);
+});
+$('groupList').addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.key === 'Enter') e.target.blur();
+});
+
+['filter', 'useRegex', 'ungroupedOnly', 'sortBy'].forEach(id => $(id).addEventListener(id === 'filter' ? 'input' : 'change', renderList));
+$('btnSelShown').onclick = () => { visibleTaxa().forEach(i => selected.add(i)); refreshSelection(); };
+$('btnInvert').onclick = () => { const v = visibleTaxa(); v.forEach(i => selected.has(i) ? selected.delete(i) : selected.add(i)); refreshSelection(); };
+$('btnClearSel').onclick = () => { selected.clear(); activeGroup = null; refreshSelection(); };
+$('btnGroup').onclick = createGroup;
+$('groupName').addEventListener('keydown', e => { if (e.key === 'Enter') createGroup(); });
+$('btnUndo').onclick = undo;
+$('btnRedo').onclick = redo;
+$('btnClearGroups').onclick = () => { if (confirm('Remove all groups?')) commit(() => { S.groups = []; }); };
+
+$('tabs').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  fmt = b.dataset.fmt;
+  [...$('tabs').children].forEach(c => c.classList.toggle('on', c === b));
+  renderOutput();
+});
+$('btnCopy').onclick = async () => {
+  const txt = $('output').value;
+  try { await navigator.clipboard.writeText(txt); }
+  catch (e) { $('output').select(); document.execCommand('copy'); }
+  toast('Copied to clipboard');
+};
+$('btnDownload').onclick = () => {
+  const base = (S.source || 'constraint').replace(/\.[^.]+$/, '');
+  const [ext, type] = { newick: ['.constraint.nwk', 'text/plain'], nexus: ['.constraint.nex', 'text/plain'], ccpp: ['.calibrations.xml', 'application/xml'], beast: ['.mrca-priors.xml', 'application/xml'] }[fmt];
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([$('output').value + '\n'], { type }));
+  a.download = base + ext;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+// File loading
+$('btnOpen').onclick = () => $('fileInput').click();
+$('fileInput').addEventListener('change', e => {
+  const f = e.target.files[0]; if (f) readFile(f);
+  e.target.value = '';
+});
+function readFile(f) {
+  const r = new FileReader();
+  r.onload = () => loadText(r.result, f.name);
+  r.onerror = () => toast('Could not read ' + f.name, true);
+  r.readAsText(f);
+}
+let dragDepth = 0;
+document.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; document.body.classList.add('drag'); });
+document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('drag'); } });
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove('drag');
+  const f = e.dataTransfer.files[0]; if (f) readFile(f);
+});
+$('btnPaste').onclick = () => { $('pasteText').value = ''; $('pasteDlg').showModal(); $('pasteText').focus(); };
+$('pasteDlg').addEventListener('close', () => {
+  if ($('pasteDlg').returnValue === 'ok') loadText($('pasteText').value, 'pasted text');
+});
+$('btnExample').onclick = () => loadText(
+  ['Homo_sapiens', 'Pan_troglodytes', 'Pan_paniscus', 'Gorilla_gorilla', 'Pongo_abelii', 'Pongo_pygmaeus',
+   'Hylobates_lar', 'Macaca_mulatta', 'Macaca_fascicularis', 'Papio_anubis', 'Chlorocebus_sabaeus',
+   'Colobus_guereza', 'Callithrix_jacchus', 'Saimiri_boliviensis', 'Aotus_nancymaae', 'Tarsius_syrichta',
+   'Microcebus_murinus', 'Otolemur_garnettii'].map(n => '>' + n + '\nACGT').join('\n'), 'example.fasta');
+
+document.addEventListener('keydown', e => {
+  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) && e.target.type !== 'checkbox';
+  const mod = e.metaKey || e.ctrlKey;
+  if (mod && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+  if (mod && e.key.toLowerCase() === 'y' && !typing) { e.preventDefault(); redo(); return; }
+  if (typing) { if (e.key === 'Escape') e.target.blur(); return; }
+  if (e.key === 'Escape') { selected.clear(); activeGroup = null; refreshSelection(); }
+  else if (e.key.toLowerCase() === 'g' && !mod) { e.preventDefault(); createGroup(); }
+});
+
+restore();
+render();
+</script>
+</body>
+</html>
