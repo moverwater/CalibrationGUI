@@ -218,6 +218,7 @@ kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); borde
         <button data-fmt="nexus">NEXUS</button>
         <button data-fmt="ccpp">CalibratedCPP</button>
         <button data-fmt="beast">MRCA priors</button>
+        <button data-fmt="lphy">LPhy</button>
       </div>
       <div id="exportOpts"></div>
       <textarea id="output" readonly spellcheck="false"></textarea>
@@ -261,7 +262,7 @@ let undoStack = [], redoStack = [];
 let fmt = 'newick';
 let opts = {
   ungrouped: true, labels: false, ages: true, treeId: '@tree',
-  ccppForm: 'forest', conf: 0.9, declareTaxa: false, beastVersion: 3,
+  ccppForm: 'forest', conf: 0.9, declareTaxa: false, beastVersion: 3, lphyData: 'D',
 };
 let T = null;                   // derived tree for the current render
 let W = [];                     // calibration warnings for the current render
@@ -468,11 +469,12 @@ function loadText(text, source) {
     }
 
     if (names && names.newick) {
-      const tr = newickToGroups(parseNewick(names.newick));
-      importTree(tr, source);
+      loadDataset(newickToGroups(parseNewick(names.newick)), source);
+    } else if (forest) {
+      const f = newickToGroups(parseNewick(forest));
+      loadDataset({ ...f, taxa: [...names, ...f.taxa], treeLeaves: f.taxa }, source);
     } else {
-      if (names.length || !forest) setTaxa(names, source);
-      if (forest) importTree(newickToGroups(parseNewick(forest)), source, true);
+      loadDataset({ taxa: names, groups: [], root: newRoot() }, source);
     }
   } catch (e) {
     toast('Could not parse ' + (source || 'input') + ': ' + e.message, true);
@@ -488,33 +490,25 @@ function dedupe(names) {
   return out;
 }
 
-// Replace the taxon set, carrying over existing groups by taxon name.
-function setTaxa(names, source) {
-  names = dedupe(names);
+// Every loaded file replaces the taxa, groups and calibrations (Undo restores the previous set).
+// treeLeaves: the taxa covered by the file's constraint tree, when that is fewer than all taxa.
+function loadDataset({ taxa, groups, root, treeLeaves }, source) {
+  const names = dedupe(taxa);
   if (!names.length) return toast('No taxa found in ' + (source || 'input'), true);
-  const carried = S.groups.map(g => ({ ...g, taxa: g.taxa.map(i => S.taxa[i]) }));
-  commit(() => applyTaxaAndGroups(names, carried, source));
-  const kept = S.groups.length;
-  toast(`Loaded ${names.length} taxa` + (kept ? `, kept ${kept} existing group${kept > 1 ? 's' : ''}` : ''));
-}
-
-// A Newick tree replaces the groups and calibrations; taxa are the union of current taxa and tree leaves.
-function importTree({ taxa: leaves, groups, root }, source, noConfirm = false) {
-  if (S.groups.length && !noConfirm && !confirm('Importing a tree replaces the current groups and calibrations. Continue?')) return;
-  const names = dedupe([...S.taxa, ...leaves]);
+  if ((S.groups.length || hasAge(S.root)) &&
+      !confirm(`Load ${source || 'this input'}? It replaces the current taxa, groups and calibrations (Undo restores them).`)) return;
   const gs = groups.map(g => ({ name: g.name, taxa: g.taxa, lower: g.lower, upper: g.upper }));
-  // If the tree covers only some taxa, its root is an ordinary clade rather than the root.
-  const partial = new Set(leaves).size < names.length;
+  // If the constraint tree covers only some taxa, its root is an ordinary clade rather than the root.
+  const leaves = dedupe(treeLeaves || names);
+  const partial = leaves.length < names.length;
   if (partial && (hasAge(root) || root.name !== 'root')) gs.push({ name: root.name === 'root' ? '' : root.name, taxa: leaves, lower: root.lower, upper: root.upper });
-  let n = 0;
   commit(() => {
-    S.groups = [];
     applyTaxaAndGroups(names, gs, source);
     S.root = partial ? newRoot() : root;
-    n = S.groups.length;
   });
+  const n = S.groups.length;
   const nc = S.groups.filter(hasAge).length + (hasAge(S.root) ? 1 : 0);
-  toast(`Imported tree: ${leaves.length} taxa, ${n} group${n === 1 ? '' : 's'}` + (nc ? `, ${nc} calibration${nc === 1 ? '' : 's'}` : ''));
+  toast(`Loaded ${names.length} taxa` + (n ? `, ${n} group${n === 1 ? '' : 's'}` : '') + (nc ? `, ${nc} calibration${nc === 1 ? '' : 's'}` : ''));
 }
 
 function applyTaxaAndGroups(names, namedGroups, source) {
@@ -1006,6 +1000,56 @@ function toBeastXml() {
   return out.join('\n');
 }
 
+// LPhy: one calibration(taxa, upper, lower) per clade, jointly handled by ConditionedMRCAPrior.
+function toLPhy() {
+  const used = new Set(['D', 'L', 'n', 'taxa', 'tree', 'calibrations', opts.lphyData]);
+  const ident = base => {
+    let s = base.replace(/[^A-Za-z0-9_]/g, '_');
+    if (!/^[A-Za-z_]/.test(s)) s = '_' + s;
+    let out = s;
+    for (let k = 2; used.has(out); k++) out = s + '_' + k;
+    used.add(out);
+    return out;
+  };
+  const str = t => '"' + t.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  const array = (name, leaves) => {
+    const lines = [];
+    let line = '';
+    for (const i of leaves) {
+      const s = str(S.taxa[i]);
+      if (line && line.length + s.length > 96) { lines.push(line); line = ''; }
+      line += (line ? ', ' : '') + s;
+    }
+    lines.push(line);
+    return `${name} = [` + lines.join(',\n' + ' '.repeat(name.length + 4)) + '];';
+  };
+
+  const clades = [];
+  if (isCalibrated(S.root)) clades.push({ c: S.root, leaves: T.root.leaves, root: true });
+  groupsInTreeOrder().forEach(n => clades.push({ c: n.group, leaves: n.leaves }));
+  const cal = clades.filter(x => isCalibrated(x.c));
+  const skipped = clades.filter(x => !isCalibrated(x.c)).map(x => x.c.name);
+  if (!cal.length) return '// No clade has both a min and a max age, so there are no LPhy calibrations to write.';
+
+  const out = ['// Calibrations from Constraint Tree Builder: paste into the model{} block', ''];
+  const dataVar = opts.lphyData.trim();
+  for (const x of cal) {
+    x.taxaVar = x.root && dataVar ? `${dataVar}.getTaxaNames()` : null;
+    if (!x.taxaVar) { x.taxaVar = ident(x.c.name); out.push(array(x.taxaVar, x.leaves)); }
+  }
+  out.push('');
+  for (const x of cal) {
+    x.calVar = ident('c' + x.c.name.charAt(0).toUpperCase() + x.c.name.slice(1));
+    out.push(`${x.calVar} = calibration(taxa=${x.taxaVar}, upper=${x.c.upper}, lower=${x.c.lower});`);
+  }
+  const p = opts.conf !== 0.9 ? `, p=${opts.conf}` : '';
+  out.push(`calibrations ~ ConditionedMRCAPrior(calibrations=[${cal.map(x => x.calVar).join(', ')}]${p});`);
+  if (skipped.length) out.push('', `// Not included (calibration() needs both a min and a max age): ${skipped.join(', ')}`);
+  out.push('', '// Tree prior, e.g.:',
+    `// tree ~ CalibratedCPP(calibrations=calibrations, diversification=diversification, turnover=turnover, rho=rho, n=n);`);
+  return out.join('\n');
+}
+
 function renderOutput() {
   const o = $('exportOpts');
   const chk = (key, label) => `<label class="chk"><input type="checkbox" data-opt="${key}"${opts[key] ? ' checked' : ''}>${label}</label>`;
@@ -1018,15 +1062,19 @@ function renderOutput() {
       (opts.ccppForm === 'sets'
         ? `<label class="muted" title="Probability mass inside each soft bound">confidence <input type="text" data-opt="conf" value="${opts.conf}" style="width:48px"></label>` + chk('declareTaxa', 'declare taxa')
         : '');
+  } else if (fmt === 'lphy') {
+    o.innerHTML =
+      `<label class="muted" title="Alignment variable from the data{} block; the root calibration uses its getTaxaNames(). Leave empty to list the taxa explicitly.">data <input type="text" data-opt="lphyData" value="${esc(opts.lphyData)}" spellcheck="false" style="width:60px"></label>` +
+      `<label class="muted" title="ConditionedMRCAPrior p: probability mass inside each soft bound">confidence <input type="text" data-opt="conf" value="${opts.conf}" style="width:48px"></label>`;
   } else if (fmt === 'beast') {
     o.innerHTML = `<select data-opt="beastVersion"><option value="3"${opts.beastVersion === 3 ? ' selected' : ''}>BEAST 3</option>` +
       `<option value="2"${opts.beastVersion === 2 ? ' selected' : ''}>BEAST 2</option></select>` + treeIdInput + chk('declareTaxa', 'declare taxa');
   } else {
     o.innerHTML = chk('ungrouped', 'ungrouped taxa') + chk('labels', 'clade names') + chk('ages', 'ages [&lower,upper]');
   }
-  const out = !S.taxa.length ? '' : fmt === 'newick' ? toNewick() : fmt === 'nexus' ? toNexus() : fmt === 'ccpp' ? toCalibratedCPP() : toBeastXml();
+  const out = !S.taxa.length ? '' : fmt === 'newick' ? toNewick() : fmt === 'nexus' ? toNexus() : fmt === 'ccpp' ? toCalibratedCPP() : fmt === 'lphy' ? toLPhy() : toBeastXml();
   $('output').value = out;
-  $('output').classList.toggle('xml', fmt === 'ccpp' || fmt === 'beast');
+  $('output').classList.toggle('xml', fmt === 'ccpp' || fmt === 'beast' || fmt === 'lphy');
   $('btnCopy').disabled = $('btnDownload').disabled = !out;
 }
 $('exportOpts').addEventListener('change', e => {
@@ -1150,7 +1198,7 @@ $('btnCopy').onclick = async () => {
 };
 $('btnDownload').onclick = () => {
   const base = (S.source || 'constraint').replace(/\.[^.]+$/, '');
-  const [ext, type] = { newick: ['.constraint.nwk', 'text/plain'], nexus: ['.constraint.nex', 'text/plain'], ccpp: ['.calibrations.xml', 'application/xml'], beast: ['.mrca-priors.xml', 'application/xml'] }[fmt];
+  const [ext, type] = { newick: ['.constraint.nwk', 'text/plain'], nexus: ['.constraint.nex', 'text/plain'], ccpp: ['.calibrations.xml', 'application/xml'], beast: ['.mrca-priors.xml', 'application/xml'], lphy: ['.calibrations.lphy', 'text/plain'] }[fmt];
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([$('output').value + '\n'], { type }));
   a.download = base + ext;
