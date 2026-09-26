@@ -100,14 +100,25 @@ body.drag #treeWrap { outline: 3px dashed var(--accent); outline-offset: -10px; 
 .grp input.age { flex: none; width: 58px; text-align: right; border-color: var(--border); background: var(--bg); font-variant-numeric: tabular-nums; }
 .grp.warn input.age { border-color: var(--danger); }
 .grp .dash { color: var(--muted); flex: none; }
-.grp .btns { display: flex; flex: none; width: 52px; justify-content: flex-end; }
+.grp .btns { display: flex; flex: none; width: 84px; justify-content: flex-end; align-items: center; }
+.grp button.dist { font-size: 11px; padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); min-width: 30px; }
+.grp button.dist.set { color: var(--text); border-color: var(--edge); }
+.grp button.dist.open { background: var(--accent-weak); border-color: var(--accent); color: var(--text); }
+.distEd { margin: 0 8px 6px 30px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+  display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.distEd input[type=text] { width: 56px; text-align: right; padding: 1px 6px; font-variant-numeric: tabular-nums; }
+.distEd label { color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
+.distEd .plot { flex-basis: 100%; }
+.distEd .plot svg { display: block; width: 100%; height: 70px; }
+.distEd .sum { flex-basis: 100%; color: var(--muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.distEd .note { flex-basis: 100%; color: var(--muted); font-size: 11.5px; }
 .grp.root { border-bottom: 1px solid var(--border); padding-top: 5px; padding-bottom: 5px; }
 .ghdr { display: flex; gap: 6px; padding: 4px 8px 4px 12px; color: var(--muted); font-size: 11px; }
 .ghdr .sp { flex: 1; }
 .ghdr .c { width: 30px; text-align: right; }
 .ghdr .a { width: 58px; text-align: center; }
 .ghdr .dash { visibility: hidden; }
-.ghdr .b { width: 52px; }
+.ghdr .b { width: 84px; text-align: center; }
 .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
 .swatch.rootsw { background: transparent; border: 1.5px solid var(--edge); border-radius: 50%; }
 #warnings { display: none; margin: 0 12px 8px; padding: 6px 10px; border-radius: 6px; font-size: 12px;
@@ -119,8 +130,8 @@ body.drag #treeWrap { outline: 3px dashed var(--accent); outline-offset: -10px; 
 .pad { padding: 10px 12px; }
 
 #exportBox { border-top: 1px solid var(--border); display: flex; flex-direction: column; height: 46%; min-height: 200px; }
-.tabs { display: flex; gap: 2px; padding: 8px 12px 0; }
-.tabs button { border-radius: 6px 6px 0 0; border-bottom: none; }
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 8px 12px 0; }
+.tabs button { border-radius: 6px 6px 0 0; border-bottom: none; padding: 3px 8px; font-size: 12px; }
 .tabs button.on { background: var(--accent-weak); border-color: var(--accent-weak); }
 #exportOpts { padding: 6px 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 #exportOpts input[type=text] { width: 150px; }
@@ -209,7 +220,7 @@ kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); borde
   <!-- Groups + export -->
   <section class="panel">
     <h2><span>Groups &amp; calibrations</span><span id="groupCount"></span></h2>
-    <div class="ghdr"><span class="sp">Clade</span><span class="c">taxa</span><span class="a">min age</span><span class="dash">–</span><span class="a">max age</span><span class="b"></span></div>
+    <div class="ghdr"><span class="sp">Clade</span><span class="c">taxa</span><span class="a">min age</span><span class="dash">–</span><span class="a">max age</span><span class="b" title="Distribution used by the MRCAPrior export">MRCA prior</span></div>
     <div id="groupList"></div>
     <div id="warnings"></div>
     <div id="exportBox">
@@ -217,7 +228,8 @@ kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); borde
         <button data-fmt="newick" class="on">Newick</button>
         <button data-fmt="nexus">NEXUS</button>
         <button data-fmt="ccpp">CalibratedCPP</button>
-        <button data-fmt="beast">MRCA priors</button>
+        <button data-fmt="cprior">CalibrationPrior</button>
+        <button data-fmt="beast">MRCAPrior</button>
         <button data-fmt="lphy">LPhy</button>
       </div>
       <div id="exportOpts"></div>
@@ -263,9 +275,11 @@ let fmt = 'newick';
 let opts = {
   ungrouped: true, labels: false, ages: true, treeId: '@tree',
   ccppForm: 'forest', conf: 0.9, declareTaxa: false, beastVersion: 3, lphyData: 'D',
+  cpSets: 'ccpp', mrcaSets: 'here',
 };
 let T = null;                   // derived tree for the current render
 let W = [];                     // calibration warnings for the current render
+let distOpen = null;            // clade id whose MRCA-prior distribution editor is open
 
 const $ = id => document.getElementById(id);
 const num = v => { const x = parseFloat(v); return Number.isFinite(x) ? x : null; };
@@ -533,7 +547,7 @@ function applyTaxaAndGroups(names, namedGroups, source) {
     const id = S.nextId++;
     if (!name) name = uniqueName('clade' + id, usedNames);
     usedNames.add(name);
-    out.push({ id, name, taxa: t, color: g.color || null, lower: g.lower ?? null, upper: g.upper ?? null });
+    out.push({ id, name, taxa: t, color: g.color || null, lower: g.lower ?? null, upper: g.upper ?? null, dist: g.dist });
   }
   S.groups = out;
   S.groups.forEach(g => { if (!g.color) g.color = nextColor(); });
@@ -626,7 +640,9 @@ function calWarnings() {
   const add = (id, msg) => out.push({ id, msg });
   const taxonNames = new Set(S.taxa);
   const check = (c, id, label, ancestorCal) => {
-    if (hasAge(c) && !isCalibrated(c)) add(id, `${label}: needs both a min and a max age`);
+    // A min-only clade is fine for an offset MRCA prior; CalibratedCPP and LPhy just skip it.
+    if (hasAge(c) && !isCalibrated(c) && distOf(c).type === 'uniform') add(id, `${label}: needs both a min and a max age`);
+    if (c.dist) distProblems(c).forEach(p => add(id, `${label}: MRCA prior ${p}`));
     if (isCalibrated(c) && c.lower > c.upper) add(id, `${label}: min age ${c.lower} is greater than max age ${c.upper}`);
     if (c.lower != null && ancestorCal && ancestorCal.c.upper != null && c.lower > ancestorCal.c.upper)
       add(id, `${label}: min age ${c.lower} is older than the max age ${ancestorCal.c.upper} of enclosing clade "${ancestorCal.c.name}"`);
@@ -643,6 +659,157 @@ function calWarnings() {
   walk(T.root, hasAge(S.root) ? { c: S.root } : null);
   const bad = S.taxa.filter(t => /[\[\](),:;'"]/.test(t));
   if (bad.length) add(null, `${bad.length} taxon name${bad.length > 1 ? 's contain' : ' contains'} ()[],:; or quotes — CalibrationForestParser cannot read these (e.g. "${bad[0]}")`);
+  return out;
+}
+
+// ---------------------------------------------------------------- MRCA prior distributions
+// Each clade may carry c.dist = { type, offset, ...params }. Only the MRCAPrior export uses it;
+// without one, a clade with ages gets Uniform(min, max). Offset types default their offset to the min age.
+const DISTS = {
+  uniform:     { label: 'Uniform', short: 'U', params: [] },
+  lognormal:   { label: 'Log-normal', short: 'LN', params: [['M', 'M'], ['S', 'S']], offset: true },
+  exponential: { label: 'Exponential', short: 'Exp', params: [['mean', 'mean']], offset: true },
+  gamma:       { label: 'Gamma', short: 'Γ', params: [['alpha', 'shape'], ['theta', 'scale']], offset: true },
+  normal:      { label: 'Normal', short: 'N', params: [['mean', 'mean'], ['sigma', 'σ']] },
+};
+const distOf = c => c.dist || { type: 'uniform' };
+const offsetOf = c => distOf(c).offset ?? c.lower ?? 0;
+const round = x => +x.toPrecision(4);
+
+// Starting parameters for a newly chosen type, scaled to the clade's age range when there is one.
+function defaultDist(type, c) {
+  const lo = c.lower ?? 0, span = c.upper != null && c.upper > lo ? c.upper - lo : null;
+  switch (type) {
+    case 'lognormal': return { type, M: span ? round(Math.log(span) - 1.645) : 0, S: 1, real: false };
+    case 'exponential': return { type, mean: span ? round(span / 3) : 1 };
+    case 'gamma': return { type, alpha: 2, theta: span ? round(span / 5) : 1 };
+    case 'normal': return { type, mean: span ? round(lo + span / 2) : lo || 1, sigma: span ? round(span / 4) : 1 };
+    default: return { type: 'uniform' };
+  }
+}
+
+function lnGamma(z) {
+  const g = [676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61503916999185,
+             12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lnGamma(1 - z);
+  z -= 1;
+  let x = 0.99999999999980993;
+  g.forEach((gi, i) => x += gi / (z + i + 1));
+  const t = z + g.length - 0.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+
+// Density and a plotting range for the clade's distribution, or null if it is not well defined.
+function densityOf(c) {
+  const d = distOf(c), off = offsetOf(c);
+  const ok = v => typeof v === 'number' && v > 0;
+  switch (d.type) {
+    case 'uniform': {
+      const lo = c.lower ?? 0, hi = c.upper;
+      if (hi == null || hi <= lo) return null;
+      return { pdf: x => x >= lo && x <= hi ? 1 / (hi - lo) : 0, from: lo, to: hi, pad: true };
+    }
+    case 'lognormal': {
+      if (!ok(d.S) || (d.real && !ok(d.M)) || typeof d.M !== 'number') return null;
+      const mu = d.real ? Math.log(d.M) - d.S * d.S / 2 : d.M;
+      return { pdf: x => { const y = x - off; return y <= 0 ? 0 : Math.exp(-((Math.log(y) - mu) ** 2) / (2 * d.S * d.S)) / (y * d.S * Math.sqrt(2 * Math.PI)); },
+               from: off, to: off + Math.exp(mu + 3.3 * d.S) };
+    }
+    case 'exponential':
+      if (!ok(d.mean)) return null;
+      return { pdf: x => { const y = x - off; return y < 0 ? 0 : Math.exp(-y / d.mean) / d.mean; }, from: off, to: off + 6 * d.mean };
+    case 'gamma': {
+      if (!ok(d.alpha) || !ok(d.theta)) return null;
+      const lg = lnGamma(d.alpha);
+      return { pdf: x => { const y = x - off; return y <= 0 ? 0 : Math.exp((d.alpha - 1) * Math.log(y) - y / d.theta - lg - d.alpha * Math.log(d.theta)); },
+               from: off, to: off + d.theta * (d.alpha + 6 * Math.sqrt(d.alpha)) };
+    }
+    case 'normal':
+      if (!ok(d.sigma) || typeof d.mean !== 'number') return null;
+      return { pdf: x => Math.exp(-((x - d.mean) ** 2) / (2 * d.sigma ** 2)) / (d.sigma * Math.sqrt(2 * Math.PI)),
+               from: d.mean - 4 * d.sigma, to: d.mean + 4 * d.sigma };
+  }
+  return null;
+}
+
+// Plot of the density with the clade's min/max ages marked, plus its median and 95% interval.
+function distPlot(c) {
+  const dens = densityOf(c);
+  if (!dens) return '<div class="sum">Set valid parameters to see the density.</div>';
+  let a = Math.min(dens.from, c.lower ?? dens.from), b = Math.max(dens.to, c.upper ?? dens.to);
+  const pad = (b - a) * (dens.pad ? 0.15 : 0.03);
+  a = Math.max(0, a - pad); b += pad;
+  const N = 400, xs = [], ys = [];
+  for (let i = 0; i <= N; i++) { const x = a + (b - a) * i / N; xs.push(x); ys.push(dens.pdf(x)); }
+  // Numerical CDF (trapezoid) for the summary
+  const cdf = [0];
+  for (let i = 1; i <= N; i++) cdf.push(cdf[i - 1] + (ys[i] + ys[i - 1]) / 2 * (xs[i] - xs[i - 1]));
+  const total = cdf[N];
+  const q = p => { const t = p * total; const i = cdf.findIndex(v => v >= t); return i <= 0 ? xs[0] : xs[i - 1] + (xs[i] - xs[i - 1]) * (t - cdf[i - 1]) / ((cdf[i] - cdf[i - 1]) || 1); };
+  const W = 360, H = 70, top = Math.max(...ys.filter(Number.isFinite)) || 1;
+  const X = x => (x - a) / (b - a) * W, Y = y => H - 4 - Math.min(y / top, 1) * (H - 10);
+  const pts = xs.map((x, i) => `${X(x).toFixed(1)},${Y(ys[i]).toFixed(1)}`).join(' ');
+  const mark = (x, lbl) => x == null ? '' :
+    `<line x1="${X(x)}" x2="${X(x)}" y1="4" y2="${H - 4}" stroke="var(--danger)" stroke-dasharray="3 3"/>` +
+    `<text x="${X(x) + 3}" y="12" font-size="10" fill="var(--danger)">${lbl} ${x}</text>`;
+  const fmtN = x => round(x);
+  // Probability mass between the clade's min and max ages
+  const massIn = c.lower != null && c.upper != null
+    ? (() => { const i0 = xs.findIndex(x => x >= c.lower), i1 = xs.findIndex(x => x >= c.upper); return i0 < 0 ? 0 : ((i1 < 0 ? total : cdf[i1]) - cdf[i0]) / total; })()
+    : null;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
+    `<polygon points="${X(a)},${H - 4} ${pts} ${X(b)},${H - 4}" fill="var(--accent)" fill-opacity=".15"/>` +
+    `<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>` +
+    `<line x1="0" x2="${W}" y1="${H - 4}" y2="${H - 4}" stroke="var(--border)"/>` +
+    mark(c.lower, 'min') + mark(c.upper, 'max') + `</svg>` +
+    `<div class="sum">median ${fmtN(q(0.5))} · 95% interval ${fmtN(q(0.025))}–${fmtN(q(0.975))}` +
+    (massIn != null ? ` · ${(massIn * 100).toFixed(0)}% of mass between min and max` : '') + `</div>`;
+}
+
+function distEditor(c, id) {
+  const d = distOf(c), spec = DISTS[d.type];
+  const field = (key, label) => `<label>${label} <input type="text" data-d="${key}" value="${d[key] ?? ''}" inputmode="decimal" spellcheck="false"></label>`;
+  let html = `<div class="distEd" data-g="${id}"><select data-d="type">` +
+    Object.entries(DISTS).map(([k, v]) => `<option value="${k}"${k === d.type ? ' selected' : ''}>${v.label}</option>`).join('') + `</select>`;
+  if (d.type === 'uniform') html += `<span class="note" style="flex-basis:auto">bounds are the clade's min and max ages</span>`;
+  spec.params.forEach(([k, lbl]) => html += field(k, lbl));
+  if (d.type === 'lognormal') html += `<label class="chk"><input type="checkbox" data-d="real"${d.real ? ' checked' : ''}>M in real space</label>`;
+  if (spec.offset) html += `<label title="Leave empty to use the min age">offset <input type="text" data-d="offset" value="${d.offset ?? ''}" placeholder="${c.lower ?? 0}" inputmode="decimal" spellcheck="false"></label>`;
+  html += `<div class="plot">${distPlot(c)}</div>`;
+  if (c.dist) html += `<button class="icon" data-act="resetDist" style="margin-left:auto" title="Back to the default Uniform(min, max)">reset</button>`;
+  return html + `</div>`;
+}
+
+function setDist(id, key, target) {
+  const c = clade(id);
+  if (key === 'type') {
+    commit(() => { c.dist = target.value === 'uniform' ? undefined : defaultDist(target.value, c); });
+    return;
+  }
+  const d = { ...distOf(c) };
+  if (key === 'real') d.real = target.checked;
+  else {
+    const raw = target.value.trim();
+    const v = raw === '' ? null : num(raw);
+    if (raw !== '' && v === null) { target.value = d[key] ?? ''; return toast('Enter a number', true); }
+    if (key === 'offset') d.offset = v; else d[key] = v;
+  }
+  commit(() => { c.dist = d; }, true);
+}
+function refreshDistPlot() {
+  if (distOpen == null) return;
+  const ed = document.querySelector(`#groupList .distEd[data-g="${distOpen}"] .plot`);
+  const c = clade(distOpen);
+  if (ed && c) ed.innerHTML = distPlot(c);
+}
+function distProblems(c) {
+  const d = distOf(c), out = [];
+  const pos = (k, lbl) => { if (!(typeof d[k] === 'number' && d[k] > 0)) out.push(`${DISTS[d.type].label} ${lbl} must be a positive number`); };
+  if (d.type === 'lognormal') { pos('S', 'S'); if (d.real) pos('M', 'M (real space)'); else if (typeof d.M !== 'number') out.push('Log-normal M must be a number'); }
+  if (d.type === 'exponential') pos('mean', 'mean');
+  if (d.type === 'gamma') { pos('alpha', 'shape'); pos('theta', 'scale'); }
+  if (d.type === 'normal') { pos('sigma', 'σ'); if (typeof d.mean !== 'number') out.push('Normal mean must be a number'); }
+  if (DISTS[d.type].offset && offsetOf(c) < 0) out.push('offset must not be negative');
   return out;
 }
 
@@ -694,7 +861,7 @@ function render(keepGroupList = false) {
   $('btnClearGroups').disabled = !S.groups.length;
   renderList();
   renderTree();
-  if (keepGroupList) markGroupWarnings(); else renderGroups();
+  if (keepGroupList) { markGroupWarnings(); refreshDistPlot(); refreshDistButtons(); } else renderGroups();
   renderWarnings();
   renderOutput();
   renderSelBar();
@@ -704,6 +871,17 @@ function renderWarnings() {
   const el = $('warnings');
   el.innerHTML = W.map(w => `<div>⚠ ${esc(w.msg)}</div>`).join('');
   el.classList.toggle('show', W.length > 0);
+}
+function refreshDistButtons() {
+  document.querySelectorAll('#groupList .grp button.dist').forEach(b => {
+    const c = clade(b.closest('.grp').dataset.g), d = distOf(c);
+    b.textContent = c.dist || hasAge(c) ? DISTS[d.type].short : 'ƒ';
+    b.title = `MRCA prior distribution: ${DISTS[d.type].label}${DISTS[d.type].offset ? ', offset ' + offsetOf(c) : ''}`;
+  });
+  // The offset placeholder follows the min age
+  document.querySelectorAll('#groupList .distEd input[data-d="offset"]').forEach(inp => {
+    inp.placeholder = clade(inp.closest('.distEd').dataset.g).lower ?? 0;
+  });
 }
 function markGroupWarnings() {
   const bad = new Map();
@@ -814,12 +992,18 @@ function renderGroups() {
     `<input type="text" class="age" data-k="lower" value="${c.lower ?? ''}" placeholder="min" inputmode="decimal" spellcheck="false">` +
     `<span class="dash">–</span>` +
     `<input type="text" class="age" data-k="upper" value="${c.upper ?? ''}" placeholder="max" inputmode="decimal" spellcheck="false">`;
+  const distBtn = (c, id) => {
+    const d = distOf(c), shown = c.dist || hasAge(c);
+    return `<button class="icon dist${c.dist ? ' set' : ''}${distOpen === id ? ' open' : ''}" data-act="dist" tabindex="-1" ` +
+      `title="MRCA prior distribution: ${DISTS[d.type].label}${DISTS[d.type].offset ? ', offset ' + offsetOf(c) : ''}">${shown ? DISTS[d.type].short : 'ƒ'}</button>`;
+  };
   const rows = [
     `<div class="grp root" data-g="root" title="Calibrate the root (all taxa)">` +
     `<span class="swatch rootsw"></span>` +
     `<input type="text" class="nm" value="${esc(S.root.name)}" spellcheck="false" title="Rename">` +
-    `<span class="n">${S.taxa.length}</span>${ageInputs(S.root)}<span class="btns"></span></div>`,
+    `<span class="n">${S.taxa.length}</span>${ageInputs(S.root)}<span class="btns">${distBtn(S.root, 'root')}</span></div>`,
   ];
+  if (distOpen === 'root') rows.push(distEditor(S.root, 'root'));
   const walk = (node, depth) => {
     if (node.leaf !== undefined) return;
     if (node.group) {
@@ -827,9 +1011,10 @@ function renderGroups() {
       rows.push(`<div class="grp${g.id === activeGroup ? ' active' : ''}" data-g="${g.id}" style="padding-left:${12 + (depth - 1) * 14}px">` +
         `<span class="swatch" style="background:${g.color}"></span>` +
         `<input type="text" class="nm" value="${esc(g.name)}" spellcheck="false" title="Rename">` +
-        `<span class="n">${g.taxa.length}</span>${ageInputs(g)}<span class="btns">` +
+        `<span class="n">${g.taxa.length}</span>${ageInputs(g)}<span class="btns">${distBtn(g, g.id)}` +
         `<button class="icon" data-act="redefine" tabindex="-1" title="Replace this group's taxa with the current selection">⟲</button>` +
         `<button class="icon" data-act="delete" tabindex="-1" title="Delete group">✕</button></span></div>`);
+      if (distOpen === g.id) rows.push(distEditor(g, g.id));
     }
     node.children.forEach(c => walk(c, depth + 1));
   };
@@ -916,57 +1101,72 @@ function taxonWriter() {
 }
 const REAL = 'beast.base.spec.inference.parameter.RealScalarParam';
 
-function toCalibratedCPP() {
-  const gs = groupsInTreeOrder();
-  const nCal = gs.filter(n => isCalibrated(n.group)).length + (isCalibrated(S.root) ? 1 : 0);
-  if (!gs.length && !nCal) return '<!-- No groups or calibrations defined -->';
-  const tree = xmlAttr(opts.treeId);
-  const out = [];
-
-  if (opts.ccppForm === 'forest') {
-    const newick = toNewick({ forest: true });
-    out.push(
-      '<!-- 1. Tree prior (e.g. calibratedcpp.CalibratedBirthDeathSkylineModel): add as a child element',
-      '        in place of any <calibrations> elements -->',
-      `<calibrationForest id="calibrationForest" spec="calibration.CalibrationForestParser"`,
-      `    newick="${xmlAttr(newick)}"/>`,
-      '');
-    if (nCal) out.push(
-      '<!-- 2. Inside <distribution id="prior">: prior on the calibrated clade ages -->',
-      `<distribution id="calibrationPrior" spec="calibrationprior.CalibrationPrior" tree="${tree}" calibrationForest="@calibrationForest"/>`);
-    else out.push('<!-- No clade has both a min and a max age, so there is no CalibrationPrior to add -->');
-    if (opts.conf !== 0.9 && nCal) out.push('', `<!-- The constraint-tree form always uses confidenceLevel 0.9; switch to "Taxon sets" to use ${opts.conf} -->`);
-    return out.join('\n');
-  }
-
-  // Explicit form: TaxonSets on the tree prior, CalibrationCladePriors referring to them.
-  const taxon = taxonWriter();
+// Clades that CalibratedCPP conditions on: the root when calibrated, then every group (outer first).
+function ccppClades() {
   const clades = [];
   if (isCalibrated(S.root)) clades.push({ c: S.root, leaves: T.root.leaves });
-  gs.forEach(n => clades.push({ c: n.group, leaves: n.leaves }));
-  out.push('<!-- 1. Tree prior (e.g. calibratedcpp.CalibratedBirthDeathSkylineModel): add these child elements -->');
+  groupsInTreeOrder().forEach(n => clades.push({ c: n.group, leaves: n.leaves }));
+  return clades;
+}
+const noCalibrations = '<!-- No clade has both a min and a max age, so there is no CalibrationPrior to add -->';
+
+// Tree-prior side: the clades the calibrated CPP is conditioned on.
+function toCalibratedCPP() {
+  const clades = ccppClades();
+  if (!clades.length) return '<!-- No groups or calibrations defined -->';
+  if (opts.ccppForm === 'forest') {
+    return [
+      '<!-- Tree prior (e.g. calibratedcpp.CalibratedBirthDeathSkylineModel): add as a child element -->',
+      `<calibrationForest id="calibrationForest" spec="calibration.CalibrationForestParser"`,
+      `    newick="${xmlAttr(toNewick({ forest: true }))}"/>`,
+    ].join('\n');
+  }
+  const taxon = taxonWriter();
+  const out = ['<!-- Tree prior (e.g. calibratedcpp.CalibratedBirthDeathSkylineModel): add these child elements -->'];
   for (const { c, leaves } of clades) {
     out.push(`<calibrations id="${xmlAttr(c.name)}" spec="TaxonSet">`);
     leaves.forEach(i => out.push(taxon(S.taxa[i], '    ')));
     out.push('</calibrations>');
   }
-  if (!nCal) {
-    out.push('', '<!-- No clade has both a min and a max age, so there is no CalibrationPrior to add -->');
+  return out.join('\n');
+}
+
+// Age side: soft bounds on the calibrated clades, either referring to the clades declared in
+// the CalibratedCPP snippet or declaring its own.
+function toCalibrationPrior() {
+  const clades = ccppClades().filter(x => isCalibrated(x.c));
+  if (!clades.length) return noCalibrations;
+  const tree = xmlAttr(opts.treeId), linked = opts.cpSets === 'ccpp';
+  const out = ['<!-- Inside <distribution id="prior">: prior on the calibrated clade ages -->'];
+  if (opts.ccppForm === 'forest') {
+    if (linked) {
+      out.push(`<distribution id="calibrationPrior" spec="calibrationprior.CalibrationPrior" tree="${tree}" calibrationForest="@calibrationForest"/>`);
+    } else {
+      out.push(`<distribution id="calibrationPrior" spec="calibrationprior.CalibrationPrior" tree="${tree}">`,
+        `    <calibrationForest id="calibrationPrior.forest" spec="calibration.CalibrationForestParser"`,
+        `        newick="${xmlAttr(toNewick({ forest: true }))}"/>`,
+        '</distribution>');
+    }
+    if (opts.conf !== 0.9) out.push('', `<!-- The constraint-tree form always uses confidenceLevel 0.9; switch to "Taxon sets" to use ${opts.conf} -->`);
     return out.join('\n');
   }
-  out.push('', '<!-- 2. Inside <distribution id="prior">: prior on the calibrated clade ages -->',
-    `<distribution id="calibrationPrior" spec="calibrationprior.CalibrationPrior" tree="${tree}">`);
+  const taxon = taxonWriter();
+  out.push(`<distribution id="calibrationPrior" spec="calibrationprior.CalibrationPrior" tree="${tree}">`);
   let confDeclared = false;
-  for (const { c } of clades) {
-    if (!isCalibrated(c)) continue;
+  for (const { c, leaves } of clades) {
     const id = xmlAttr(c.name);
     let confAttr = '', confEl = null;
     if (opts.conf !== 0.9) {
       if (confDeclared) confAttr = ' confidenceLevel="@calibrationConfidence"';
       else { confDeclared = true; confEl = `        <confidenceLevel id="calibrationConfidence" spec="${REAL}" domain="UnitInterval" value="${opts.conf}"/>`; }
     }
-    out.push(`    <calibration id="${id}.prior" spec="calibrationprior.CalibrationCladePrior" taxa="@${id}"${confAttr}>`,
-      `        <lowerAge id="${id}.lowerAge" spec="${REAL}" domain="NonNegativeReal" value="${c.lower}"/>`,
+    out.push(`    <calibration id="${id}.prior" spec="calibrationprior.CalibrationCladePrior"${linked ? ` taxa="@${id}"` : ''}${confAttr}>`);
+    if (!linked) {
+      out.push(`        <taxa id="${id}.taxa" spec="TaxonSet">`);
+      leaves.forEach(i => out.push(taxon(S.taxa[i], '            ')));
+      out.push('        </taxa>');
+    }
+    out.push(`        <lowerAge id="${id}.lowerAge" spec="${REAL}" domain="NonNegativeReal" value="${c.lower}"/>`,
       `        <upperAge id="${id}.upperAge" spec="${REAL}" domain="NonNegativeReal" value="${c.upper}"/>`);
     if (confEl) out.push(confEl);
     out.push('    </calibration>');
@@ -975,33 +1175,69 @@ function toCalibratedCPP() {
   return out.join('\n');
 }
 
+// <distr> element(s) for a clade's MRCA prior, or null (with a reason) when there is none to write.
+function distrXml(c, id, indent) {
+  const d = distOf(c), b3 = opts.beastVersion === 3;
+  if (!c.dist && !hasAge(c)) return { xml: null };
+  if (c.dist && distProblems(c).length) return { xml: null, skip: `${c.name}: ${distProblems(c)[0]}` };
+  const off = offsetOf(c);
+  if (d.type === 'uniform') {
+    if (c.upper == null) {
+      if (b3) return { xml: null, skip: `${c.name}: BEAST 3's Uniform needs a max age` };
+      return { xml: `${indent}<distr id="${id}.Uniform" spec="beast.base.inference.distribution.Uniform" lower="${c.lower ?? 0}" upper="Infinity"/>` };
+    }
+    const spec = b3 ? 'beast.base.spec.inference.distribution.Uniform' : 'beast.base.inference.distribution.Uniform';
+    return { xml: `${indent}<distr id="${id}.Uniform" spec="${spec}" lower="${c.lower ?? 0}" upper="${c.upper}"/>` };
+  }
+  const attrs = {
+    lognormal: `M="${d.M}" S="${d.S}"${d.real ? ' meanInRealSpace="true"' : ''}`,
+    exponential: `mean="${d.mean}"`,
+    gamma: b3 ? `alpha="${d.alpha}" theta="${d.theta}"` : `alpha="${d.alpha}" beta="${d.theta}" mode="ShapeScale"`,
+    normal: `mean="${d.mean}" sigma="${d.sigma}"`,
+  }[d.type];
+  if (b3) {
+    const cls = { lognormal: 'LogNormal', exponential: 'Exponential', gamma: 'Gamma', normal: 'Normal' }[d.type];
+    const inner = `spec="beast.base.spec.inference.distribution.${cls}" ${attrs}`;
+    if (!DISTS[d.type].offset || off === 0) return { xml: `${indent}<distr id="${id}.${cls}" ${inner}/>` };
+    return { xml: [`${indent}<distr id="${id}.distr" spec="beast.base.spec.inference.distribution.OffsetReal" offset="${off}">`,
+                   `${indent}    <distribution id="${id}.${cls}" ${inner}/>`,
+                   `${indent}</distr>`].join('\n') };
+  }
+  const cls = { lognormal: 'LogNormalDistributionModel', exponential: 'Exponential', gamma: 'Gamma', normal: 'Normal' }[d.type];
+  const offAttr = DISTS[d.type].offset && off !== 0 ? ` offset="${off}"` : '';
+  return { xml: `${indent}<distr id="${id}.${cls}" spec="beast.base.inference.distribution.${cls}" ${attrs}${offAttr}/>` };
+}
+
 function toBeastXml() {
   const gs = groupsInTreeOrder();
   const clades = gs.map(n => ({ c: n.group, leaves: n.leaves }));
-  if (hasAge(S.root)) clades.unshift({ c: S.root, leaves: T.root.leaves });
+  if (hasAge(S.root) || S.root.dist) clades.unshift({ c: S.root, leaves: T.root.leaves, root: true });
   if (!clades.length) return '<!-- No groups defined -->';
   const b3 = opts.beastVersion === 3;
   const mrca = b3 ? 'beast.base.spec.evolution.tree.MRCAPrior' : 'beast.base.evolution.tree.MRCAPrior';
-  const uniform = b3 ? 'beast.base.spec.inference.distribution.Uniform' : 'beast.base.inference.distribution.Uniform';
+  // Taxon sets can be shared with the CalibratedCPP snippet only in its taxon-set form.
+  const cppIds = opts.mrcaSets === 'ccpp' && opts.ccppForm === 'sets' ? new Set(ccppClades().map(x => x.c)) : new Set();
   const taxon = taxonWriter();
-  const out = [
-    '<!-- Monophyly constraints: paste inside <distribution id="prior" ...> -->',
-  ];
-  if (clades.some(x => hasAge(x.c))) out.push('<!-- Calibrated clades get hard Uniform bounds on their MRCA age -->');
+  const out = ['<!-- Paste inside <distribution id="prior" ...> -->'];
+  if (opts.mrcaSets === 'ccpp' && opts.ccppForm !== 'sets')
+    out.push('<!-- The constraint-tree form of the CalibratedCPP snippet has no taxon sets to refer to, so they are declared here -->');
+  const skipped = [];
   // Inner groups first, so each taxon is declared in the smallest set and referenced elsewhere.
   for (const { c, leaves } of [...clades].sort((a, b) => a.leaves.length - b.leaves.length)) {
     const id = xmlAttr(c.name);
-    out.push(`<distribution id="${id}.prior" spec="${mrca}" monophyletic="true" tree="${xmlAttr(opts.treeId)}">`);
-    out.push(`    <taxonset id="${id}" spec="TaxonSet">`);
-    leaves.forEach(i => out.push(taxon(S.taxa[i], '        ')));
-    out.push('    </taxonset>');
-    if (hasAge(c)) {
-      const lo = c.lower != null ? ` lower="${c.lower}"` : '';
-      const hi = c.upper != null ? ` upper="${c.upper}"` : ' upper="Infinity"';
-      out.push(`    <distr id="${id}.Uniform" spec="${uniform}"${lo}${hi}/>`);
+    const { xml, skip } = distrXml(c, id, '    ');
+    if (skip) skipped.push(skip);
+    const ref = cppIds.has(c) ? ` taxonset="@${id}"` : '';
+    out.push(`<distribution id="${id}.prior" spec="${mrca}" monophyletic="true" tree="${xmlAttr(opts.treeId)}"${ref}>`);
+    if (!ref) {
+      out.push(`    <taxonset id="${id}" spec="TaxonSet">`);
+      leaves.forEach(i => out.push(taxon(S.taxa[i], '        ')));
+      out.push('    </taxonset>');
     }
+    if (xml) out.push(xml);
     out.push('</distribution>');
   }
+  if (skipped.length) out.push('', '<!-- Written without an age distribution (monophyly only):', ...skipped.map(s => '     ' + s), '-->');
   return out.join('\n');
 }
 
@@ -1057,29 +1293,32 @@ function toLPhy() {
 
 function renderOutput() {
   const o = $('exportOpts');
-  const chk = (key, label) => `<label class="chk"><input type="checkbox" data-opt="${key}"${opts[key] ? ' checked' : ''}>${label}</label>`;
-  const treeIdInput = `<label class="muted">tree <input type="text" data-opt="treeId" value="${esc(opts.treeId)}" spellcheck="false" style="width:130px"></label>`;
+  const chk = (key, label, title = '') => `<label class="chk"${title ? ` title="${title}"` : ''}><input type="checkbox" data-opt="${key}"${opts[key] ? ' checked' : ''}>${label}</label>`;
+  const sel = (key, options, title = '') => `<select data-opt="${key}"${title ? ` title="${title}"` : ''}>` +
+    options.map(([v, l]) => `<option value="${v}"${String(opts[key]) === String(v) ? ' selected' : ''}>${l}</option>`).join('') + '</select>';
+  const treeIdInput = `<label class="muted">tree <input type="text" data-opt="treeId" value="${esc(opts.treeId)}" spellcheck="false" style="width:110px"></label>`;
+  const confInput = `<label class="muted" title="Probability mass inside each soft bound">confidence <input type="text" data-opt="conf" value="${opts.conf}" style="width:48px"></label>`;
+  const formSel = sel('ccppForm', [['forest', 'Constraint tree'], ['sets', 'Taxon sets']], 'Shared by the CalibratedCPP and CalibrationPrior snippets');
+  const declare = chk('declareTaxa', 'declare taxa', 'Declare each Taxon on first use instead of referring to existing ids');
   if (fmt === 'ccpp') {
-    o.innerHTML =
-      `<select data-opt="ccppForm"><option value="forest"${opts.ccppForm === 'forest' ? ' selected' : ''}>Constraint tree</option>` +
-      `<option value="sets"${opts.ccppForm === 'sets' ? ' selected' : ''}>Taxon sets + clade priors</option></select>` +
-      treeIdInput +
-      (opts.ccppForm === 'sets'
-        ? `<label class="muted" title="Probability mass inside each soft bound">confidence <input type="text" data-opt="conf" value="${opts.conf}" style="width:48px"></label>` + chk('declareTaxa', 'declare taxa')
-        : '');
+    o.innerHTML = formSel + (opts.ccppForm === 'sets' ? declare : '');
+  } else if (fmt === 'cprior') {
+    o.innerHTML = formSel + sel('cpSets', [['ccpp', 'clades from CalibratedCPP snippet'], ['here', 'clades declared here']]) + treeIdInput +
+      (opts.ccppForm === 'sets' ? confInput + (opts.cpSets === 'here' ? declare : '') : '');
   } else if (fmt === 'lphy') {
     o.innerHTML =
       `<label class="muted" title="Alignment variable from the data{} block; the root calibration uses its getTaxaNames(). Leave empty to list the taxa explicitly.">data <input type="text" data-opt="lphyData" value="${esc(opts.lphyData)}" spellcheck="false" style="width:60px"></label>` +
-      `<label class="muted" title="ConditionedMRCAPrior p: probability mass inside each soft bound">confidence <input type="text" data-opt="conf" value="${opts.conf}" style="width:48px"></label>`;
+      confInput;
   } else if (fmt === 'beast') {
-    o.innerHTML = `<select data-opt="beastVersion"><option value="3"${opts.beastVersion === 3 ? ' selected' : ''}>BEAST 3</option>` +
-      `<option value="2"${opts.beastVersion === 2 ? ' selected' : ''}>BEAST 2</option></select>` + treeIdInput + chk('declareTaxa', 'declare taxa');
+    o.innerHTML = sel('beastVersion', [[3, 'BEAST 3'], [2, 'BEAST 2']]) +
+      sel('mrcaSets', [['here', 'taxon sets declared here'], ['ccpp', 'taxon sets from CalibratedCPP']]) + treeIdInput + declare;
   } else {
     o.innerHTML = chk('ungrouped', 'ungrouped taxa') + chk('labels', 'clade names') + chk('ages', 'ages [&lower,upper]');
   }
-  const out = !S.taxa.length ? '' : fmt === 'newick' ? toNewick() : fmt === 'nexus' ? toNexus() : fmt === 'ccpp' ? toCalibratedCPP() : fmt === 'lphy' ? toLPhy() : toBeastXml();
+  const gen = { newick: toNewick, nexus: toNexus, ccpp: toCalibratedCPP, cprior: toCalibrationPrior, beast: toBeastXml, lphy: toLPhy }[fmt];
+  const out = S.taxa.length ? gen() : '';
   $('output').value = out;
-  $('output').classList.toggle('xml', fmt === 'ccpp' || fmt === 'beast' || fmt === 'lphy');
+  $('output').classList.toggle('xml', fmt !== 'newick' && fmt !== 'nexus');
   $('btnCopy').disabled = $('btnDownload').disabled = !out;
 }
 $('exportOpts').addEventListener('change', e => {
@@ -1149,15 +1388,24 @@ function findNode(id) {
 }
 
 $('groupList').addEventListener('click', e => {
+  const act = e.target.closest('button')?.dataset.act;
+  if (act === 'resetDist') {
+    const id = e.target.closest('.distEd').dataset.g;
+    return commit(() => { clade(id).dist = undefined; });
+  }
   const row = e.target.closest('.grp');
   if (!row || e.target.tagName === 'INPUT') return;
+  if (act === 'dist') {
+    const id = row.dataset.g === 'root' ? 'root' : +row.dataset.g;
+    distOpen = distOpen === id ? null : id;
+    return renderGroups();
+  }
   if (row.dataset.g === 'root') {
     setSelection(T.root.leaves, false);
     activeGroup = null;
     return refreshSelection();
   }
   const id = +row.dataset.g;
-  const act = e.target.closest('button')?.dataset.act;
   if (act === 'delete') return deleteGroup(id);
   if (act === 'redefine') return redefineGroup(id);
   const node = findNode(id);
@@ -1170,6 +1418,8 @@ $('groupList').addEventListener('click', e => {
   if (top < wrap.scrollTop || node.yBot > wrap.scrollTop + wrap.clientHeight) wrap.scrollTo({ top, behavior: 'smooth' });
 });
 $('groupList').addEventListener('change', e => {
+  const ed = e.target.closest('.distEd');
+  if (ed && e.target.dataset.d) return setDist(ed.dataset.g, e.target.dataset.d, e.target);
   if (e.target.tagName !== 'INPUT') return;
   const id = e.target.closest('.grp').dataset.g;
   if (e.target.classList.contains('age')) setAge(id, e.target.dataset.k, e.target.value, e.target);
@@ -1203,7 +1453,7 @@ $('btnCopy').onclick = async () => {
 };
 $('btnDownload').onclick = () => {
   const base = (S.source || 'constraint').replace(/\.[^.]+$/, '');
-  const [ext, type] = { newick: ['.constraint.nwk', 'text/plain'], nexus: ['.constraint.nex', 'text/plain'], ccpp: ['.calibrations.xml', 'application/xml'], beast: ['.mrca-priors.xml', 'application/xml'], lphy: ['.calibrations.lphy', 'text/plain'] }[fmt];
+  const [ext, type] = { newick: ['.constraint.nwk', 'text/plain'], nexus: ['.constraint.nex', 'text/plain'], ccpp: ['.tree-prior-calibrations.xml', 'application/xml'], cprior: ['.calibration-prior.xml', 'application/xml'], beast: ['.mrca-priors.xml', 'application/xml'], lphy: ['.calibrations.lphy', 'text/plain'] }[fmt];
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([$('output').value + '\n'], { type }));
   a.download = base + ext;
