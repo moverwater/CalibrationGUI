@@ -51,7 +51,8 @@ export function renderTree() {
       bands.push(`<rect x="${node.x - 8}" y="${node.yTop - ROW / 2 + 2}" width="${W - node.x + 8 - 6 - inset}" height="${node.yBot - node.yTop + ROW - 4}" rx="6" fill="${g.color}" fill-opacity="${g.id === activeGroup ? .2 : .08}" stroke="${g.color}" stroke-opacity="${g.id === activeGroup ? .9 : .45}"${g.id === activeGroup ? ' stroke-width="2"' : ''}/>`);
       const maxChars = Math.floor((COL - 16) / 6.6);
       const nm = g.name.length > maxChars ? g.name.slice(0, Math.max(1, maxChars - 1)) + '…' : g.name;
-      labels.push(`<text class="glabel" x="${node.x - 11}" y="${node.y - 5}" text-anchor="end" fill="${g.color}">${esc(nm)}</text>`);
+      // Labels use the text colour: some palette colours (yellow) are unreadable as text on white.
+      labels.push(`<text class="glabel" x="${node.x - 11}" y="${node.y - 5}" text-anchor="end" fill="currentColor">${esc(nm)}</text>`);
       if (hasAge(g)) labels.push(`<text class="gage" x="${node.x - 11}" y="${node.y + 4}" text-anchor="end">${esc(ageText(g))}</text>`);
     } else if (rootAge) {
       labels.push(`<text class="glabel" x="${node.x - 11}" y="${node.y - 5}" text-anchor="end" fill="currentColor">${esc(S.root.name)}</text>`);
@@ -61,7 +62,7 @@ export function renderTree() {
     const all = node.leaves.every(i => selected.has(i));
     nodes.push(`<g class="inode" data-g="${g ? g.id : 'root'}"><title>${esc(g ? g.name : 'root')} (${node.leaves.length} taxa) — click to select</title>` +
       `<circle cx="${node.x}" cy="${node.y}" r="10" fill="transparent"/>` +
-      `<circle cx="${node.x}" cy="${node.y}" r="4.5" fill="${all ? 'var(--accent)' : g ? g.color : 'var(--panel)'}" stroke="${g ? g.color : 'var(--edge)'}" stroke-width="1.5"/></g>`);
+      `<circle cx="${node.x}" cy="${node.y}" r="4.5" fill="${all ? 'var(--accent)' : g ? g.color : 'var(--panel)'}" stroke="var(--edge)" stroke-width="1.2"/></g>`);
   };
   walk(root, null);
   // Stem to root

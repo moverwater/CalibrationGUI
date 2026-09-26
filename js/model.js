@@ -7,8 +7,10 @@
 import { dedupe } from './util.js';
 import { distOf, distProblems } from './distributions.js';
 
-export const PALETTE = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#1fb5c9', '#f032e6',
-                        '#9a6324', '#469990', '#808000', '#6f5bd1', '#e6a800', '#d2691e', '#2e8b57'];
+// Okabe–Ito colours, which stay distinguishable with the common forms of colour blindness. Its
+// black is left out so groups remain visible in dark mode. Seven colours cannot all differ once
+// there are more groups, so colours are chosen by structure (see colorFor).
+export const PALETTE = ['#0072B2', '#E69F00', '#009E73', '#CC79A7', '#56B4E9', '#D55E00', '#F0E442'];
 
 export const newRoot = () => ({ name: 'root', lower: null, upper: null });
 export const emptyState = () => ({ taxa: [], groups: [], root: newRoot(), nextId: 1, source: '' });
@@ -24,13 +26,34 @@ export function uniqueName(base, used) {
   if (!used.has(base)) return base;
   for (let k = 2; ; k++) if (!used.has(base + '_' + k)) return base + '_' + k;
 }
-export function nextColor(S) {
+// A colour for the group at `node` of tree T that differs from its enclosing group, the groups
+// directly inside it and its sibling groups, if one is free; otherwise one that at least differs
+// from its enclosing group and those inside it. Among those, the least used colour.
+export function colorFor(S, T, node) {
+  const colorsOf = nodes => nodes.filter(n => n.group?.color).map(n => n.group.color);
+  const parent = node.parent;
+  const near = new Set([...colorsOf(parent?.group ? [parent] : []), ...colorsOf(node.children)]);
+  const siblings = new Set(colorsOf((parent?.children || []).filter(n => n !== node)));
   const counts = new Map(PALETTE.map(c => [c, 0]));
-  S.groups.forEach(g => g.color && counts.set(g.color, (counts.get(g.color) || 0) + 1));
-  let best = PALETTE[0];
-  for (const c of PALETTE) if (counts.get(c) < counts.get(best)) best = c;
-  return best;
+  S.groups.forEach(g => counts.has(g.color) && counts.set(g.color, counts.get(g.color) + 1));
+  const leastUsed = cs => cs.reduce((best, c) => counts.get(c) < counts.get(best) ? c : best);
+  const free = PALETTE.filter(c => !near.has(c) && !siblings.has(c));
+  if (free.length) return leastUsed(free);
+  const apart = PALETTE.filter(c => !near.has(c));
+  return leastUsed(apart.length ? apart : PALETTE);
 }
+// Recolours every group by structure, outermost first.
+export function recolorAll(S) {
+  S.groups.forEach(g => { g.color = null; });
+  const T = buildTree(S);
+  const walk = node => {
+    if (node.group) node.group.color = colorFor(S, T, node);
+    (node.children || []).forEach(walk);
+  };
+  walk(T.root);
+}
+// Whether a saved session uses colours from an older palette.
+export const hasForeignColors = S => S.groups.some(g => !PALETTE.includes(g.color));
 
 // A group that `taxaIdx` would duplicate or partially overlap, or null.
 export function findConflict(S, taxaIdx, ignoreId) {
@@ -58,7 +81,10 @@ export function validateSelection(S, t, ignoreId) {
 export function addGroup(S, name, taxa) {
   const id = S.nextId++;
   const t = [...taxa].sort((a, b) => a - b);
-  S.groups.push({ id, name: name || uniqueName('clade' + id, new Set(S.groups.map(g => g.name))), taxa: t, color: nextColor(S) });
+  const g = { id, name: name || uniqueName('clade' + id, new Set(S.groups.map(g => g.name))), taxa: t, color: null };
+  S.groups.push(g);
+  const T = buildTree(S);
+  g.color = colorFor(S, T, findNode(T, id));
   return id;
 }
 
@@ -98,15 +124,15 @@ export function applyTaxaAndGroups(S, names, namedGroups, source) {
     const id = S.nextId++;
     if (!name) name = uniqueName('clade' + id, usedNames);
     usedNames.add(name);
-    out.push({ id, name, taxa: t, color: g.color || null, lower: g.lower ?? null, upper: g.upper ?? null, dist: g.dist });
+    out.push({ id, name, taxa: t, color: null, lower: g.lower ?? null, upper: g.upper ?? null, dist: g.dist });
   }
   S.groups = out;
-  S.groups.forEach(g => { if (!g.color) g.color = nextColor(S); });
+  recolorAll(S);
 }
 
 // The clade tree implied by the groups:
 //   root: { group: null, children, depth, h, min, leaves }
-//   internal node: { group, children, ... }, leaf: { leaf: taxon index, groups: enclosing groups }
+//   internal node: { group, children, parent, ... }, leaf: { leaf: taxon index, groups: enclosing groups, parent }
 //   order: taxon indices in tree order; leafNodes: leaf node per taxon index.
 export function buildTree(S) {
   const n = S.taxa.length;
@@ -124,6 +150,7 @@ export function buildTree(S) {
   const order = [];
   const finish = (node, depth, ancestors) => {
     node.depth = depth;
+    (node.children || []).forEach(c => { c.parent = node; });
     if (node.leaf !== undefined) { node.min = node.leaf; node.h = 0; node.groups = ancestors; return; }
     const anc = node.group ? [...ancestors, node.group] : ancestors;
     node.children.forEach(c => finish(c, depth + 1, anc));

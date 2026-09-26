@@ -28,8 +28,11 @@ export function renderList() {
   const { S, T, selected } = app;
   const vis = visibleTaxa();
   $('taxonList').innerHTML = vis.map(i => {
-    const dots = T.leafNodes[i].groups.map(g => `<span class="dot" style="background:${g.color}" title="${esc(g.name)}"></span>`).join('');
-    return `<div class="taxon${selected.has(i) ? ' sel' : ''}" data-i="${i}"><input type="checkbox" tabindex="-1"${selected.has(i) ? ' checked' : ''}><span class="nm" title="${esc(S.taxa[i])}">${esc(S.taxa[i])}</span><span class="dots">${dots}</span></div>`;
+    const groups = T.leafNodes[i].groups;
+    const dots = groups.map(g => `<span class="dot" style="background:${g.color}" title="${esc(g.name)}"></span>`).join('');
+    // The innermost group's name, so group membership does not rely on colour alone
+    const inner = groups.length ? `<span class="gname" title="${esc(groups.map(g => g.name).join(' › '))}">${esc(groups[groups.length - 1].name)}</span>` : '';
+    return `<div class="taxon${selected.has(i) ? ' sel' : ''}" data-i="${i}"><input type="checkbox" tabindex="-1"${selected.has(i) ? ' checked' : ''}><span class="nm" title="${esc(S.taxa[i])}">${esc(S.taxa[i])}</span>${inner}<span class="dots">${dots}</span></div>`;
   }).join('') || (S.taxa.length ? '<div class="pad muted">No taxa match the filter</div>' : '');
 }
 

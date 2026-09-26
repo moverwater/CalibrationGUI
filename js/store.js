@@ -1,6 +1,6 @@
 // Application state shared by the UI modules: the document (S), export options, view state,
 // undo/redo and persistence in the browser.
-import { emptyState, newRoot } from './model.js';
+import { emptyState, newRoot, hasForeignColors, recolorAll } from './model.js';
 import { DEFAULT_OPTS } from './export/index.js';
 
 export const STORE_KEY = 'constraint-tree-builder-v1';
@@ -36,6 +36,7 @@ export function restore() {
     const d = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
     if (d && Array.isArray(d.S?.taxa)) { app.S = d.S; Object.assign(app.opts, d.opts || {}); }
     if (!app.S.root) app.S.root = newRoot();
+    if (hasForeignColors(app.S)) recolorAll(app.S);  // saved with an older palette
   } catch (e) { /* ignore */ }
 }
 
