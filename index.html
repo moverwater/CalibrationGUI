@@ -349,15 +349,27 @@ function parsePhylip(t) {
   const ntax = parseInt(lines[0].trim().split(/\s+/)[0], 10);
   return lines.slice(1, 1 + ntax).map(l => l.trim().split(/\s+/)[0]);
 }
+// BEAST XML: taxa from <sequence taxon="..."> (falling back to <taxon id="...">), plus the
+// constraint tree of a calibration.CalibrationForestParser if there is one.
 function parseBeastXml(t) {
-  const out = []; let m;
-  const re = /<sequence\b[^>]*?\btaxon\s*=\s*"([^"]+)"/g;
-  while ((m = re.exec(t))) out.push(m[1]);
-  if (!out.length) {
-    const re2 = /<taxon\b[^>]*?\bid\s*=\s*"([^"]+)"/g;
-    while ((m = re2.exec(t))) out.push(m[1]);
+  const doc = new DOMParser().parseFromString(t, 'application/xml');
+  const err = doc.getElementsByTagName('parsererror')[0];
+  if (err) throw new Error('invalid XML: ' + (err.querySelector('div') || err).textContent.trim().split('\n')[0]);
+  const all = [...doc.getElementsByTagName('*')];
+  let taxa = all.filter(el => el.localName === 'sequence' && el.hasAttribute('taxon')).map(el => el.getAttribute('taxon'));
+  if (!taxa.length) taxa = all.filter(el => el.localName === 'taxon' && el.hasAttribute('id')).map(el => el.getAttribute('id'));
+  // newick is a String input: either an attribute or a child element (<newick>…</newick> or <input name="newick">…</input>)
+  let forest = null;
+  const fp = all.find(el => (el.getAttribute('spec') || '').endsWith('CalibrationForestParser'));
+  if (fp) {
+    if (fp.hasAttribute('newick')) forest = fp.getAttribute('newick');
+    else {
+      const child = [...fp.children].find(c => c.localName === 'newick' || (c.localName === 'input' && c.getAttribute('name') === 'newick'));
+      if (child) forest = child.textContent;
+    }
+    if (forest !== null && !forest.trim()) forest = null;
   }
-  return out;
+  return { taxa, forest };
 }
 
 // Returns {name, children[]} tree
@@ -452,21 +464,14 @@ function loadText(text, source) {
   const t = text.replace(/^﻿/, '').trim();
   if (!t) return toast('Nothing to load', true);
   try {
-    let names;
+    let names, forest = null;
     if (t.startsWith('>')) names = parseFasta(t);
     else if (/^#nexus/i.test(t)) names = parseNexus(t);
     else if (/^\d+\s+\d+/.test(t)) names = parsePhylip(t);
-    else if (t.startsWith('<')) names = parseBeastXml(t);
+    else if (t.startsWith('<')) ({ taxa: names, forest } = parseBeastXml(t));
     else if (t.startsWith('(')) names = { newick: t };
     else names = t.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'));
 
-    // A CalibratedCPP XML with a CalibrationForestParser: load the alignment taxa, then its constraint tree
-    let forest = null;
-    if (t.startsWith('<')) {
-      const m = t.match(/<[^>]*calibration\.CalibrationForestParser[^>]*>/);
-      const nm = m && m[0].match(/\bnewick\s*=\s*"([^"]*)"/);
-      if (nm) forest = nm[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
-    }
 
     if (names && names.newick) {
       loadDataset(newickToGroups(parseNewick(names.newick)), source);
