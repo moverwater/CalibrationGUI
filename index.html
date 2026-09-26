@@ -223,7 +223,7 @@ kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); borde
       <input type="text" id="groupName" placeholder="Group name (optional)" spellcheck="false">
       <button id="btnGroup" class="primary" title="Create group from selection (G)">Create group</button>
       <button id="btnClearSel" title="Clear selection (Esc)">Clear selection</button>
-      <span class="muted" style="margin-left:auto">Click taxa to select · click a node to select its clade · <kbd>G</kbd> group · <kbd>Esc</kbd> clear</span>
+      <span class="muted" style="margin-left:auto">Click taxa to select · click a node to select its clade · <kbd>G</kbd> group · <kbd>Del</kbd> delete clade · <kbd>Esc</kbd> clear</span>
     </div>
     <div id="treeWrap">
       <svg id="tree" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -631,6 +631,18 @@ function redefineGroup(id) {
 function deleteGroup(id) {
   commit(() => { S.groups = S.groups.filter(g => g.id !== id); });
   if (activeGroup === id) activeGroup = null;
+  if (distOpen === id) distOpen = null;
+}
+// Delete key: removes the clade whose taxa are exactly the current selection (the highlighted
+// clade first), so a stale highlight never deletes something the user is no longer looking at.
+function deleteSelectedClade() {
+  const matches = g => g.taxa.length === selected.size && g.taxa.every(i => selected.has(i));
+  const g = S.groups.find(g => g.id === activeGroup && matches(g)) || S.groups.find(matches);
+  if (!g) return toast('Select a clade to delete: click its node in the tree or its row in the groups list', true);
+  deleteGroup(g.id);
+  selected.clear();
+  refreshSelection();
+  toast(`Deleted "${g.name}" (Undo restores it)`);
 }
 const clade = id => id === 'root' ? S.root : S.groups.find(g => g.id === +id);
 function renameGroup(id, name, input) {
@@ -1597,6 +1609,7 @@ document.addEventListener('keydown', e => {
   if (typing) { if (e.key === 'Escape') e.target.blur(); return; }
   if (e.key === 'Escape') { selected.clear(); activeGroup = null; refreshSelection(); }
   else if (e.key.toLowerCase() === 'g' && !mod) { e.preventDefault(); createGroup(); }
+  else if ((e.key === 'Delete' || e.key === 'Backspace') && !mod) { e.preventDefault(); deleteSelectedClade(); }
 });
 
 restore();
