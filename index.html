@@ -275,7 +275,7 @@ let fmt = 'newick';
 let opts = {
   ungrouped: true, labels: false, ages: true, treeId: '@tree',
   ccppForm: 'forest', conf: 0.9, declareTaxa: false, beastVersion: 3, lphyData: 'D',
-  cpSets: 'ccpp', mrcaSets: 'here',
+  idrefCcpp: false, idrefCp: true, idrefMrca: false,
 };
 let T = null;                   // derived tree for the current render
 let W = [];                     // calibration warnings for the current render
@@ -1109,20 +1109,27 @@ function ccppClades() {
   return clades;
 }
 const noCalibrations = '<!-- No clade has both a min and a max age, so there is no CalibrationPrior to add -->';
+// Every snippet declares a clade's TaxonSet under the clade name, so a snippet can idref the sets
+// another one declares. This note lists what must be declared elsewhere.
+const idrefNote = ids => `<!-- Refers by idref to TaxonSets declared in another snippet: ${ids.join(', ')} -->`;
+const forestIdrefNote = '<!-- Refers by idref to the calibrationForest declared in another snippet -->';
 
 // Tree-prior side: the clades the calibrated CPP is conditioned on.
 function toCalibratedCPP() {
   const clades = ccppClades();
   if (!clades.length) return '<!-- No groups or calibrations defined -->';
+  const head = '<!-- Tree prior (e.g. calibratedcpp.CalibratedBirthDeathSkylineModel): add as child element(s) -->';
   if (opts.ccppForm === 'forest') {
-    return [
-      '<!-- Tree prior (e.g. calibratedcpp.CalibratedBirthDeathSkylineModel): add as a child element -->',
+    if (opts.idrefCcpp) return [head, forestIdrefNote, '<calibrationForest idref="calibrationForest"/>'].join('\n');
+    return [head,
       `<calibrationForest id="calibrationForest" spec="calibration.CalibrationForestParser"`,
       `    newick="${xmlAttr(toNewick({ forest: true }))}"/>`,
     ].join('\n');
   }
+  if (opts.idrefCcpp)
+    return [head, idrefNote(clades.map(x => x.c.name)), ...clades.map(x => `<calibrations idref="${xmlAttr(x.c.name)}"/>`)].join('\n');
   const taxon = taxonWriter();
-  const out = ['<!-- Tree prior (e.g. calibratedcpp.CalibratedBirthDeathSkylineModel): add these child elements -->'];
+  const out = [head];
   for (const { c, leaves } of clades) {
     out.push(`<calibrations id="${xmlAttr(c.name)}" spec="TaxonSet">`);
     leaves.forEach(i => out.push(taxon(S.taxa[i], '    ')));
@@ -1131,19 +1138,19 @@ function toCalibratedCPP() {
   return out.join('\n');
 }
 
-// Age side: soft bounds on the calibrated clades, either referring to the clades declared in
-// the CalibratedCPP snippet or declaring its own.
+// Age side: soft bounds on the calibrated clades, declaring their taxon sets (or forest) or
+// referring by idref to the ones another snippet declares.
 function toCalibrationPrior() {
   const clades = ccppClades().filter(x => isCalibrated(x.c));
   if (!clades.length) return noCalibrations;
-  const tree = xmlAttr(opts.treeId), linked = opts.cpSets === 'ccpp';
+  const tree = xmlAttr(opts.treeId), linked = opts.idrefCp;
   const out = ['<!-- Inside <distribution id="prior">: prior on the calibrated clade ages -->'];
   if (opts.ccppForm === 'forest') {
     if (linked) {
-      out.push(`<distribution id="calibrationPrior" spec="calibrationprior.CalibrationPrior" tree="${tree}" calibrationForest="@calibrationForest"/>`);
+      out.push(forestIdrefNote, `<distribution id="calibrationPrior" spec="calibrationprior.CalibrationPrior" tree="${tree}" calibrationForest="@calibrationForest"/>`);
     } else {
       out.push(`<distribution id="calibrationPrior" spec="calibrationprior.CalibrationPrior" tree="${tree}">`,
-        `    <calibrationForest id="calibrationPrior.forest" spec="calibration.CalibrationForestParser"`,
+        `    <calibrationForest id="calibrationForest" spec="calibration.CalibrationForestParser"`,
         `        newick="${xmlAttr(toNewick({ forest: true }))}"/>`,
         '</distribution>');
     }
@@ -1151,6 +1158,7 @@ function toCalibrationPrior() {
     return out.join('\n');
   }
   const taxon = taxonWriter();
+  if (linked) out.push(idrefNote(clades.map(x => x.c.name)));
   out.push(`<distribution id="calibrationPrior" spec="calibrationprior.CalibrationPrior" tree="${tree}">`);
   let confDeclared = false;
   for (const { c, leaves } of clades) {
@@ -1160,9 +1168,9 @@ function toCalibrationPrior() {
       if (confDeclared) confAttr = ' confidenceLevel="@calibrationConfidence"';
       else { confDeclared = true; confEl = `        <confidenceLevel id="calibrationConfidence" spec="${REAL}" domain="UnitInterval" value="${opts.conf}"/>`; }
     }
-    out.push(`    <calibration id="${id}.prior" spec="calibrationprior.CalibrationCladePrior"${linked ? ` taxa="@${id}"` : ''}${confAttr}>`);
+    out.push(`    <calibration id="${id}.calibration" spec="calibrationprior.CalibrationCladePrior"${linked ? ` taxa="@${id}"` : ''}${confAttr}>`);
     if (!linked) {
-      out.push(`        <taxa id="${id}.taxa" spec="TaxonSet">`);
+      out.push(`        <taxa id="${id}" spec="TaxonSet">`);
       leaves.forEach(i => out.push(taxon(S.taxa[i], '            ')));
       out.push('        </taxa>');
     }
@@ -1215,20 +1223,23 @@ function toBeastXml() {
   if (!clades.length) return '<!-- No groups defined -->';
   const b3 = opts.beastVersion === 3;
   const mrca = b3 ? 'beast.base.spec.evolution.tree.MRCAPrior' : 'beast.base.evolution.tree.MRCAPrior';
-  // Taxon sets can be shared with the CalibratedCPP snippet only in its taxon-set form.
-  const cppIds = opts.mrcaSets === 'ccpp' && opts.ccppForm === 'sets' ? new Set(ccppClades().map(x => x.c)) : new Set();
   const taxon = taxonWriter();
   const out = ['<!-- Paste inside <distribution id="prior" ...> -->'];
-  if (opts.mrcaSets === 'ccpp' && opts.ccppForm !== 'sets')
-    out.push('<!-- The constraint-tree form of the CalibratedCPP snippet has no taxon sets to refer to, so they are declared here -->');
+  if (opts.idrefMrca) {
+    out.push(idrefNote(clades.map(x => x.c.name)));
+    // A CalibrationForestParser's clades are built in Java and have no XML ids to refer to.
+    if (opts.ccppForm === 'forest') out.push('<!-- The constraint-tree form declares no TaxonSets; use the "Taxon sets" form in the snippet that declares them -->');
+  }
   const skipped = [];
   // Inner groups first, so each taxon is declared in the smallest set and referenced elsewhere.
   for (const { c, leaves } of [...clades].sort((a, b) => a.leaves.length - b.leaves.length)) {
     const id = xmlAttr(c.name);
     const { xml, skip } = distrXml(c, id, '    ');
     if (skip) skipped.push(skip);
-    const ref = cppIds.has(c) ? ` taxonset="@${id}"` : '';
-    out.push(`<distribution id="${id}.prior" spec="${mrca}" monophyletic="true" tree="${xmlAttr(opts.treeId)}"${ref}>`);
+    const ref = opts.idrefMrca ? ` taxonset="@${id}"` : '';
+    const open = `<distribution id="${id}.prior" spec="${mrca}" monophyletic="true" tree="${xmlAttr(opts.treeId)}"${ref}`;
+    if (ref && !xml) { out.push(open + '/>'); continue; }
+    out.push(open + '>');
     if (!ref) {
       out.push(`    <taxonset id="${id}" spec="TaxonSet">`);
       leaves.forEach(i => out.push(taxon(S.taxa[i], '        ')));
@@ -1299,19 +1310,21 @@ function renderOutput() {
   const treeIdInput = `<label class="muted">tree <input type="text" data-opt="treeId" value="${esc(opts.treeId)}" spellcheck="false" style="width:110px"></label>`;
   const confInput = `<label class="muted" title="Probability mass inside each soft bound">confidence <input type="text" data-opt="conf" value="${opts.conf}" style="width:48px"></label>`;
   const formSel = sel('ccppForm', [['forest', 'Constraint tree'], ['sets', 'Taxon sets']], 'Shared by the CalibratedCPP and CalibrationPrior snippets');
+  const idrefChk = key => chk(key, opts.ccppForm === 'forest' && key !== 'idrefMrca' ? 'idref calibrationForest' : 'idref taxon sets',
+    'Refer to the taxon sets declared in another snippet instead of declaring them here');
   const declare = chk('declareTaxa', 'declare taxa', 'Declare each Taxon on first use instead of referring to existing ids');
   if (fmt === 'ccpp') {
-    o.innerHTML = formSel + (opts.ccppForm === 'sets' ? declare : '');
+    o.innerHTML = formSel + idrefChk('idrefCcpp') + (opts.ccppForm === 'sets' && !opts.idrefCcpp ? declare : '');
   } else if (fmt === 'cprior') {
-    o.innerHTML = formSel + sel('cpSets', [['ccpp', 'clades from CalibratedCPP snippet'], ['here', 'clades declared here']]) + treeIdInput +
-      (opts.ccppForm === 'sets' ? confInput + (opts.cpSets === 'here' ? declare : '') : '');
+    o.innerHTML = formSel + idrefChk('idrefCp') + treeIdInput +
+      (opts.ccppForm === 'sets' ? confInput + (!opts.idrefCp ? declare : '') : '');
   } else if (fmt === 'lphy') {
     o.innerHTML =
       `<label class="muted" title="Alignment variable from the data{} block; the root calibration uses its getTaxaNames(). Leave empty to list the taxa explicitly.">data <input type="text" data-opt="lphyData" value="${esc(opts.lphyData)}" spellcheck="false" style="width:60px"></label>` +
       confInput;
   } else if (fmt === 'beast') {
     o.innerHTML = sel('beastVersion', [[3, 'BEAST 3'], [2, 'BEAST 2']]) +
-      sel('mrcaSets', [['here', 'taxon sets declared here'], ['ccpp', 'taxon sets from CalibratedCPP']]) + treeIdInput + declare;
+      idrefChk('idrefMrca') + treeIdInput + (!opts.idrefMrca ? declare : '');
   } else {
     o.innerHTML = chk('ungrouped', 'ungrouped taxa') + chk('labels', 'clade names') + chk('ages', 'ages [&lower,upper]');
   }
