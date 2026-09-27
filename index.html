@@ -22,8 +22,8 @@
   <input type="file" id="fileInput" hidden accept=".fa,.fasta,.fas,.fna,.faa,.nex,.nexus,.nxs,.phy,.phylip,.xml,.nwk,.newick,.tre,.tree,.trees,.txt">
   <button id="btnUndo" title="Undo (⌘/Ctrl+Z)">Undo</button>
   <button id="btnRedo" title="Redo (⇧⌘/Ctrl+Shift+Z)">Redo</button>
-  <button id="btnClearGroups">Clear groups</button>
-  <button id="btnClearAll" title="Remove all taxa, groups and calibrations (Undo restores them)">Clear all</button>
+  <button id="btnClearGroups">Clear calibrations</button>
+  <button id="btnClearAll" title="Remove all taxa and calibrations (Undo restores them)">Clear all</button>
   <div class="exmenu"><button data-menu="examples" aria-haspopup="true">Examples ▾</button><div class="menu" hidden></div></div>
   <span class="src" id="srcName"></span>
   <label class="muted" title="Colour theme">Theme
@@ -64,8 +64,8 @@
   <section class="panel" id="center">
     <div id="selbar">
       <span class="count" id="selCount">0 selected</span>
-      <input type="text" id="groupName" placeholder="Group name (optional)" spellcheck="false">
-      <button id="btnGroup" class="primary" title="Create group from selection (G)">Create group</button>
+      <input type="text" id="groupName" placeholder="Calibration name (optional)" spellcheck="false">
+      <button id="btnGroup" class="primary" title="Create calibration from selection (G)">Create calibration</button>
       <button id="btnClearSel" title="Clear selection (Esc)">Clear selection</button>
       <span class="muted" style="margin-left:auto">Click taxa to select · click a node to select its clade · <kbd>G</kbd> group · <kbd>Del</kbd> delete clade · <kbd>Esc</kbd> clear</span>
     </div>
@@ -82,7 +82,7 @@
 
   <!-- Groups + export -->
   <section class="panel">
-    <h2><span>Groups &amp; calibrations</span><span id="groupCount"></span></h2>
+    <h2><span>Calibrations</span><span id="groupCount"></span></h2>
     <div class="ghdr"><span class="sp">Clade</span><span class="c">taxa</span><span class="a">min age</span><span class="dash">–</span><span class="a">max age</span><span class="b" title="Distribution used by the MRCAPrior export">MRCA prior</span></div>
     <div id="groupList"></div>
     <div id="warnings"></div>

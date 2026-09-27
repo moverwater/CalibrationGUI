@@ -37,9 +37,9 @@ view.refreshSelection = () => {
 
 $('btnUndo').onclick = undo;
 $('btnRedo').onclick = redo;
-$('btnClearGroups').onclick = () => { if (confirm('Remove all groups?')) commit(() => { app.S.groups = []; }); };
+$('btnClearGroups').onclick = () => { if (confirm('Remove all calibrations?')) commit(() => { app.S.groups = []; }); };
 $('btnClearAll').onclick = () => {
-  if (!confirm('Remove all taxa, groups and calibrations? (Undo restores them)')) return;
+  if (!confirm('Remove all taxa and calibrations? (Undo restores them)')) return;
   commit(() => {
     app.S = emptyState();
     app.selected.clear(); app.activeGroup = null; app.anchor = null; app.distOpen = null;
