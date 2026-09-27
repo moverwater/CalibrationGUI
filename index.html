@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Constraint Tree Builder</title>
+<title>CalibrationGUI</title>
 <link rel="stylesheet" href="css/style.css">
 <script>
   // Apply a saved Light/Dark choice before the page is drawn (js/ui/theme.js manages it).
@@ -16,7 +16,7 @@
 </head>
 <body>
 <header>
-  <h1>Constraint Tree Builder</h1>
+  <h1>CalibrationGUI</h1>
   <button id="btnOpen" class="primary">Open file…</button>
   <button id="btnPaste">Paste…</button>
   <input type="file" id="fileInput" hidden accept=".fa,.fasta,.fas,.fna,.faa,.nex,.nexus,.nxs,.phy,.phylip,.xml,.nwk,.newick,.tre,.tree,.trees,.txt">
@@ -83,7 +83,7 @@
   <!-- Groups + export -->
   <section class="panel">
     <h2><span>Calibrations</span><span id="groupCount"></span></h2>
-    <div class="ghdr"><span class="sp">Clade</span><span class="c">taxa</span><span class="a">min age</span><span class="dash">–</span><span class="a">max age</span><span class="b" title="Distribution used by the MRCAPrior export">MRCA prior</span></div>
+    <div class="ghdr"><span class="sp">Clade</span><span class="c">taxa</span><span class="a">min age</span><span class="dash">–</span><span class="a">max age</span><span class="b" title="Distribution used by the MRCAPrior export">Calibration density</span></div>
     <div id="groupList"></div>
     <div id="warnings"></div>
     <div class="hgutter" data-size="export" title="Drag to resize · double-click to reset"></div>
