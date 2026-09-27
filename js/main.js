@@ -10,6 +10,7 @@ import { renderTabs, renderOutput, initExport } from './ui/export.js';
 import { initLayout } from './ui/layout.js';
 import { initLoading } from './ui/loading.js';
 import { initKeyboard } from './ui/keyboard.js';
+import { initTheme } from './ui/theme.js';
 
 view.render = (keepGroupList = false) => {
   const { S } = app;
@@ -53,6 +54,7 @@ initExport();
 initLayout();
 initLoading();
 initKeyboard();
+initTheme();
 
 restore();
 renderTabs();

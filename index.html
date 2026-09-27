@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Constraint Tree Builder</title>
 <link rel="stylesheet" href="css/style.css">
+<script>
+  // Apply a saved Light/Dark choice before the page is drawn (js/ui/theme.js manages it).
+  try {
+    const t = localStorage.getItem('constraint-tree-builder-v1-theme');
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  } catch (e) { /* storage unavailable */ }
+</script>
 <script type="module" src="js/main.js"></script>
 </head>
 <body>
@@ -19,6 +26,13 @@
   <button id="btnClearAll" title="Remove all taxa, groups and calibrations (Undo restores them)">Clear all</button>
   <div class="exmenu"><button data-menu="examples" aria-haspopup="true">Examples ▾</button><div class="menu" hidden></div></div>
   <span class="src" id="srcName"></span>
+  <label class="muted" title="Colour theme">Theme
+    <select id="theme">
+      <option value="system">System</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+  </label>
 </header>
 
 <main>
