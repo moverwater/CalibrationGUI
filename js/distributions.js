@@ -86,18 +86,24 @@ export function distPlot(c) {
   const W = 360, H = 70, top = Math.max(...ys.filter(Number.isFinite)) || 1;
   const X = x => (x - a) / (b - a) * W, Y = y => H - 4 - Math.min(y / top, 1) * (H - 10);
   const pts = xs.map((x, i) => `${X(x).toFixed(1)},${Y(ys[i]).toFixed(1)}`).join(' ');
-  const mark = (x, lbl) => x == null ? '' :
-    `<line x1="${X(x)}" x2="${X(x)}" y1="4" y2="${H - 4}" stroke="var(--danger)" stroke-dasharray="3 3"/>` +
-    `<text x="${X(x) + 3}" y="12" font-size="10" fill="var(--danger)">${lbl} ${x}</text>`;
+  // The SVG stretches to the panel width, so strokes are non-scaling and the min/max labels are
+  // HTML placed over it (SVG text would stretch with it). Labels near the right edge sit left of their line.
+  const line = x => x == null ? '' :
+    `<line x1="${X(x)}" x2="${X(x)}" y1="4" y2="${H - 4}" stroke="var(--danger)" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>`;
+  const label = (x, lbl) => {
+    if (x == null) return '';
+    const pct = X(x) / W * 100;
+    return `<span class="mark${pct > 70 ? ' end' : ''}" style="left:${pct.toFixed(2)}%">${lbl} ${x}</span>`;
+  };
   // Probability mass between the clade's min and max ages
   const massIn = c.lower != null && c.upper != null
     ? (() => { const i0 = xs.findIndex(x => x >= c.lower), i1 = xs.findIndex(x => x >= c.upper); return i0 < 0 ? 0 : ((i1 < 0 ? total : cdf[i1]) - cdf[i0]) / total; })()
     : null;
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
+  return `<div class="plotbox"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">` +
     `<polygon points="${X(a)},${H - 4} ${pts} ${X(b)},${H - 4}" fill="var(--accent)" fill-opacity=".15"/>` +
     `<polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="1.5" vector-effect="non-scaling-stroke"/>` +
-    `<line x1="0" x2="${W}" y1="${H - 4}" y2="${H - 4}" stroke="var(--border)"/>` +
-    mark(c.lower, 'min') + mark(c.upper, 'max') + `</svg>` +
+    `<line x1="0" x2="${W}" y1="${H - 4}" y2="${H - 4}" stroke="var(--border)" vector-effect="non-scaling-stroke"/>` +
+    line(c.lower) + line(c.upper) + `</svg>` + label(c.lower, 'min') + label(c.upper, 'max') + `</div>` +
     `<div class="sum">median ${round(q(0.5))} · 95% interval ${round(q(0.025))}–${round(q(0.975))}` +
     (massIn != null ? ` · ${(massIn * 100).toFixed(0)}% of mass between min and max` : '') + `</div>`;
 }
