@@ -4,7 +4,10 @@ import { emptyState, buildTree, calWarnings } from './model.js';
 import { $, toast } from './ui/dom.js';
 import { renderSelBar } from './ui/selection.js';
 import { renderList, initTaxa } from './ui/taxa.js';
-import { renderTree, initTree } from './ui/tree.js';
+import { initTree } from './ui/tree.js';
+import { initOutline } from './ui/outline.js';
+import { renderCenter, initViews } from './ui/views.js';
+import { initAbout } from './ui/about.js';
 import { renderGroups, refreshGroupsInPlace, renderWarnings, initGroups } from './ui/groups.js';
 import { renderTabs, renderOutput, initExport } from './ui/export.js';
 import { initLayout } from './ui/layout.js';
@@ -25,14 +28,14 @@ view.render = (keepGroupList = false) => {
   $('btnClearGroups').disabled = !S.groups.length;
   $('btnClearAll').disabled = !S.taxa.length;
   renderList();
-  renderTree();
+  renderCenter();
   if (keepGroupList) refreshGroupsInPlace(); else renderGroups();
   renderWarnings();
   renderOutput();
   renderSelBar();
 };
 view.refreshSelection = () => {
-  renderList(); renderTree(); renderGroups(); renderSelBar();
+  renderList(); renderCenter(); renderGroups(); renderSelBar();
 };
 
 $('btnUndo').onclick = undo;
@@ -49,6 +52,9 @@ $('btnClearAll').onclick = () => {
 
 initTaxa();
 initTree();
+initOutline();
+initViews();
+initAbout();
 initGroups();
 initExport();
 initLayout();

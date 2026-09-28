@@ -6,6 +6,7 @@ import { hasAge, cladeById, validateSelection, addGroup, findNode } from '../mod
 import { DISTS, distOf, offsetOf, defaultDist, distPlot } from '../distributions.js';
 import { $, toast } from './dom.js';
 import { setSelection } from './selection.js';
+import { revealClade } from './views.js';
 
 const clade = id => cladeById(app.S, id);
 
@@ -206,10 +207,7 @@ export function initGroups() {
     setSelection(node.leaves, e.shiftKey || e.metaKey || e.ctrlKey);
     app.activeGroup = id;
     view.refreshSelection();
-    // Scroll the clade into view
-    const wrap = $('treeWrap');
-    const top = node.yTop - 40;
-    if (top < wrap.scrollTop || node.yBot > wrap.scrollTop + wrap.clientHeight) wrap.scrollTo({ top, behavior: 'smooth' });
+    revealClade(id);
   });
   $('groupList').addEventListener('change', e => {
     const ed = e.target.closest('.distEd');

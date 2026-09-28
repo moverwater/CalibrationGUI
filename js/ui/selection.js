@@ -26,6 +26,18 @@ export function toggleTaxon(i, e, orderList) {
   view.refreshSelection();
 }
 
+// Click on a clade (tree node or list row): selects its taxa, or with shift/⌘/Ctrl adds them
+// (removes them if they were all selected already), and highlights the clade.
+export function clickClade(node, e) {
+  const { selected } = app;
+  const additive = e.shiftKey || e.metaKey || e.ctrlKey;
+  const allSel = node.leaves.every(i => selected.has(i));
+  if (additive && allSel) node.leaves.forEach(i => selected.delete(i));
+  else setSelection(node.leaves, additive);
+  app.activeGroup = node.group ? node.group.id : null;
+  view.refreshSelection();
+}
+
 export function renderSelBar() {
   const n = app.selected.size;
   $('selCount').textContent = `${n} selected`;

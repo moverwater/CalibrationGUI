@@ -1,9 +1,9 @@
 // The tree view: an SVG cladogram of the groups, with coloured bands for clades and their ages.
-import { app, view } from '../store.js';
+import { app } from '../store.js';
 import { esc } from '../util.js';
 import { hasAge, ageText, findNode } from '../model.js';
 import { $ } from './dom.js';
-import { setSelection, toggleTaxon } from './selection.js';
+import { toggleTaxon, clickClade } from './selection.js';
 
 // Draws app.T, storing each node's position (x, y, yTop, yBot) on the node.
 export function renderTree() {
@@ -78,19 +78,17 @@ export function renderTree() {
 export function initTree() {
   $('tree').addEventListener('mousedown', e => { if (e.shiftKey) e.preventDefault(); });
   $('tree').addEventListener('click', e => {
-    const { T, selected } = app;
+    const { T } = app;
     const leaf = e.target.closest('.leaf');
     if (leaf) return toggleTaxon(+leaf.dataset.i, e, T.order);
     const inode = e.target.closest('.inode');
-    if (inode) {
-      const id = inode.dataset.g;
-      const node = id === 'root' ? T.root : findNode(T, +id);
-      const additive = e.shiftKey || e.metaKey || e.ctrlKey;
-      const allSel = node.leaves.every(i => selected.has(i));
-      if (additive && allSel) node.leaves.forEach(i => selected.delete(i));
-      else setSelection(node.leaves, additive);
-      app.activeGroup = node.group ? node.group.id : null;
-      view.refreshSelection();
-    }
+    if (inode) clickClade(inode.dataset.g === 'root' ? T.root : findNode(T, +inode.dataset.g), e);
   });
+}
+
+// Scrolls the tree so the clade's band is in view (uses the positions set by renderTree).
+export function revealInTree(node) {
+  const wrap = $('treeWrap');
+  const top = node.yTop - 40;
+  if (top < wrap.scrollTop || node.yBot > wrap.scrollTop + wrap.clientHeight) wrap.scrollTo({ top, behavior: 'smooth' });
 }

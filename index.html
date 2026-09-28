@@ -26,6 +26,7 @@
   <button id="btnClearAll" title="Remove all taxa and calibrations (Undo restores them)">Clear all</button>
   <div class="exmenu"><button data-menu="examples" aria-haspopup="true">Examples ▾</button><div class="menu" hidden></div></div>
   <span class="src" id="srcName"></span>
+  <button id="btnAbout" title="About CalibrationGUI, how to cite it, links">About</button>
   <label class="muted" title="Colour theme">Theme
     <select id="theme">
       <option value="system">System</option>
@@ -68,9 +69,14 @@
       <button id="btnGroup" class="primary" title="Create calibration from selection (G)">Create calibration</button>
       <button id="btnClearSel" title="Clear selection (Esc)">Clear selection</button>
       <span class="muted" style="margin-left:auto">Click taxa to select · click a node to select its clade · <kbd>G</kbd> group · <kbd>Del</kbd> delete clade · <kbd>Esc</kbd> clear</span>
+      <div class="seg" id="viewSwitch" role="group" aria-label="View">
+        <button data-view="tree" title="Show the calibrations as a tree">Tree</button>
+        <button data-view="list" title="Show the calibrations as an indented list">List</button>
+      </div>
     </div>
     <div id="treeWrap">
       <svg id="tree" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div id="outline" hidden></div>
       <div class="empty" id="empty">
         <div style="font-size:15px;color:var(--text)">Load an alignment to start</div>
         <div>FASTA, NEXUS, PHYLIP, BEAST XML, a Newick tree, or a plain list of names.<br>Drop a file anywhere, or use <b>Open file…</b> / <b>Paste…</b></div>
@@ -113,6 +119,44 @@
       <button value="ok" class="primary" id="pasteOk">Load</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="aboutDlg" aria-labelledby="aboutTitle">
+  <div class="about">
+    <div class="about-head">
+      <h2 id="aboutTitle">CalibrationGUI</h2>
+      <form method="dialog"><button class="icon" aria-label="Close">✕</button></form>
+    </div>
+    <p>
+      A browser tool for defining node-age calibrations for molecular clock dating. Load an
+      alignment or tree, build nested calibration clades by selecting taxa, give them min/max
+      ages, and export them as a constraint tree (Newick or NEXUS), as BEAST&nbsp;3 XML for the
+      CalibratedCPP tree prior, CalibrationPrior and MRCAPriors, or as a LinguaPhylo snippet.
+    </p>
+    <p class="muted">
+      Everything runs in your browser: files are never uploaded, and your session is saved in
+      this browser only.
+    </p>
+
+    <h3>How to cite</h3>
+    <p>If you found use CalibrationGUI useful in your research, please cite:</p>
+    <blockquote>
+      <!-- Overwater, M. <i>CalibrationGUI</i> [software].
+      <a href="https://github.com/moverwater/CalibrationGUI" target="_blank" rel="noopener">https://github.com/moverwater/CalibrationGUI</a> -->
+    </blockquote>
+
+    <h3>Links</h3>
+    <ul>
+      <li><a href="https://github.com/moverwater/CalibrationGUI" target="_blank" rel="noopener">Source code, issues and README</a></li>
+      <li><a href="https://beast2-dev.github.io/CalibratedCPP/" target="_blank" rel="noopener">CalibratedCPP documentation</a>, including the constraint-tree format</li>
+    </ul>
+
+    <h3>Licence</h3>
+    <p class="muted">
+      Free software under the GNU General Public License, version 3 (see <code>COPYING</code>).
+      Colours use the Okabe–Ito palette, chosen to stay distinguishable with common forms of colour blindness.
+    </p>
+  </div>
 </dialog>
 
 <div id="toast"></div>
